@@ -37,6 +37,7 @@ import { applyAiEvent, isSafeLink, saveConversation, type QueryPart, type TurnVi
 import { cellText, ResultStore } from '../lib/resultStore';
 import { rowCount, spanText } from '../lib/sqlText';
 import { arrange, BOX_WIDTH, edges, fit, tableHeight, zoomAt, type DiagramTable } from '../lib/diagram';
+import { inOrder, moveTo } from '../lib/explorerPrefs';
 import { nextZoom, zoomAction } from '../lib/zoom';
 
 function wrap(ui: ReactNode) {
@@ -543,5 +544,26 @@ describe('schema diagram', () => {
     expect(fit([users], positions, 1000, 800).k).toBe(1);
     expect(fit([users], { users: { x: 5000, y: 0 } }, 1000, 800).k).toBeLessThan(0.2);
     expect(fit([users], positions, 0, 0).k).toBe(1);
+  });
+});
+
+describe('connection order', () => {
+  const item = (id: string) => ({ id });
+
+  it('keeps the saved order and puts new connections last', () => {
+    const items = ['a', 'b', 'c', 'd'].map(item);
+    expect(inOrder(items, ['c', 'a', 'gone']).map((i) => i.id)).toEqual(['c', 'a', 'b', 'd']);
+  });
+
+  it('moves before a position, counting from the list as it was', () => {
+    expect(moveTo(['a', 'b', 'c', 'd'], 'a', 3)).toEqual(['b', 'c', 'a', 'd']);
+    expect(moveTo(['a', 'b', 'c', 'd'], 'd', 0)).toEqual(['d', 'a', 'b', 'c']);
+    expect(moveTo(['a', 'b', 'c', 'd'], 'b', 4)).toEqual(['a', 'c', 'd', 'b']);
+  });
+
+  it('cannot move past either end or lose anything', () => {
+    expect(moveTo(['a', 'b'], 'a', -1)).toEqual(['a', 'b']);
+    expect(moveTo(['a', 'b'], 'b', 99)).toEqual(['a', 'b']);
+    expect(moveTo(['a', 'b'], 'x', 0)).toEqual(['a', 'b']);
   });
 });

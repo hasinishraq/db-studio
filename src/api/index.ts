@@ -63,6 +63,8 @@ export const api = {
   txState: (session: SessionId) => unwrap(commands.txState(session)),
   planRowChange: (session: SessionId, table: TableRef, change: RowChange) =>
     unwrap(commands.planRowChange(session, table, change)),
+  planCreateDatabase: (session: SessionId, name: string, charset: string | null) =>
+    unwrap(commands.planCreateDatabase(session, name, charset)),
   planCreateTable: (session: SessionId, table: TableRef, columns: NewColumn[]) =>
     unwrap(commands.planCreateTable(session, table, columns)),
 

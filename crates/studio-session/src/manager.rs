@@ -118,9 +118,20 @@ impl SessionManager {
         Ok(verdicts(sql, self.get(id)?.engine()))
     }
 
-    /// Lists schemas.
+    /// Lists schemas. On MySQL these are the databases, so a chosen one that is gone is forgotten.
     pub async fn list_schemas(&self, id: SessionId) -> Result<Vec<SchemaRef>, SessionError> {
-        Ok(self.get(id)?.session.list_schemas().await?)
+        let open = self.get(id)?;
+        let schemas = open.session.list_schemas().await?;
+        if open.engine() == Engine::MySql {
+            let mut chosen = open.database.lock().await;
+            if chosen
+                .as_ref()
+                .is_some_and(|name| !schemas.iter().any(|s| &s.name == name))
+            {
+                *chosen = None;
+            }
+        }
+        Ok(schemas)
     }
 
     /// Lists tables and views.

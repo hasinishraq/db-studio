@@ -49,6 +49,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::settings::settings_set,
             commands::rows::plan_row_change,
             commands::rows::plan_create_table,
+            commands::rows::plan_create_database,
             commands::schema_io::export_schema,
             commands::schema_io::open_schema_file,
             commands::schema_io::outline_schema,

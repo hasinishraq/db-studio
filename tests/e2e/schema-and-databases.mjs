@@ -119,7 +119,15 @@ const answer = (file) =>
       resolve(!e && out.includes('answered'));
     });
   });
-const fileAppears = (file) => until(() => fs.existsSync(file) && fs.statSync(file).size > 0, 10000);
+// Some writers save through a temporary file, so the file can vanish between two looks.
+const fileAppears = (file) =>
+  until(() => {
+    try {
+      return fs.statSync(file).size > 0;
+    } catch {
+      return false;
+    }
+  }, 10000);
 const pick = (label, value) =>
   js(`(() => {
     const s = document.querySelector('select[aria-label=${JSON.stringify(label)}]');
@@ -154,6 +162,13 @@ log: ${await logText()}`);
   }
 };
 
+const createDatabase = async (connection, name) => {
+  await js(`[...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'New database' && b.offsetParent).pop().click()`);
+  await until(() => js(`[...document.querySelectorAll('h2')].some((h) => h.textContent === 'New database')`));
+  await js(`t.fill('Name', ${JSON.stringify(name)})`);
+  await js(`t.click('Create')`);
+  await review(connection);
+};
 const addConnection = async (name, engine, port) => {
   await js(`document.querySelector('[aria-label="New connection"]').click()`);
   await until(() => has('New connection'));
@@ -259,6 +274,17 @@ const shorter = await logHeight();
 check('the log drags shorter', shorter < taller - 40, `${taller} to ${shorter}`);
 await shot('22-log-resized');
 
+// Closing results gives the editor the whole height, and the next run brings them back.
+const editorHeight = () => js(`[...document.querySelectorAll('.monaco-editor')].find((e) => e.offsetParent).getBoundingClientRect().height`);
+const withResults = await editorHeight();
+await js(`document.querySelector('[aria-label="Close results"]').click()`);
+check('results close', await until(() => js(`![...document.querySelectorAll('[aria-label="Query results"]')].some((e) => e.offsetParent)`)));
+await sleep(300);
+check('and the editor takes the space', (await editorHeight()) > withResults + 100, `${withResults} to ${await editorHeight()}`);
+await shot('29-results-closed');
+await run(`SELECT id, name FROM d3_parent ORDER BY id`);
+check('the next run opens them again', await until(() => js(`[...document.querySelectorAll('[aria-label="Query results"]')].some((e) => e.offsetParent && e.innerText.includes('four'))`)));
+
 // A table tab: selected rows only.
 await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'public' && b.offsetParent).click()`);
 await until(() => js(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'd3_parent' && b.offsetParent)`));
@@ -346,6 +372,20 @@ await review(PG);
 check('the log counts what ran', await until(async () => (await logText()).includes('2 of 2 statements ran')));
 check('the diagram now shows the live tables', await until(async () => (await boxes()).includes('d3_imported_b') && !(await has('Nothing has been applied'))));
 
+// A new database, made from the side panel.
+await js(`[...document.querySelectorAll('[role=tab]')].find((e) => e.textContent === 'New query').click()`);
+await sleep(300);
+await run(`DROP DATABASE IF EXISTS d3_made_here`, PG);
+await createDatabase(PG, 'd3_made_here');
+check('a new PostgreSQL database is listed and in use', await until(async () => (await bold()) === 'd3_made_here', 15000), await bold());
+await shot('26-new-database');
+await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'studio' && b.offsetParent).click()`);
+await until(async () => (await bold()) === 'studio');
+await js(`[...document.querySelectorAll('[role=tab]')].find((e) => e.textContent === 'New query').click()`);
+await sleep(300);
+await run(`DROP DATABASE d3_made_here`, PG);
+check('and it leaves the list when dropped', await until(() => js(`![...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'd3_made_here' && b.offsetParent)`)));
+
 // Change database with a table tab open: those tabs belong to the old database.
 await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'postgres' && b.offsetParent).click()`);
 check('switching back works', await until(async () => (await bold()) === 'postgres'));
@@ -379,6 +419,53 @@ await pick('Connection', await js(`[...[...document.querySelectorAll('select[ari
 await sleep(200);
 await run(`SELECT DATABASE() AS chosen`);
 check('MySQL queries run in the chosen database', await until(() => js(`[...document.querySelectorAll('[aria-label="Query results"]')].some((e) => e.offsetParent && e.innerText.includes('studio'))`)));
+
+await run(`DROP DATABASE IF EXISTS d3_made_here`, MY);
+await createDatabase(MY, 'd3_made_here');
+check('a new MySQL database is listed and in use', await until(async () => (await bold()) === 'd3_made_here', 15000), await bold());
+await run(`SELECT DATABASE() AS chosen`);
+check('queries then run in it', await until(() => js(`[...document.querySelectorAll('[aria-label="Query results"]')].some((e) => e.offsetParent && e.innerText.includes('d3_made_here'))`)));
+await run(`DROP DATABASE d3_made_here`, MY);
+check('dropping the database in use clears the bold mark', await until(async () => (await bold()) === ''), await bold());
+await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'studio' && b.offsetParent).click()`);
+await until(async () => (await bold()) === 'studio');
+
+// Collapse, expand and reorder connections.
+const names = () => js(`[...document.querySelectorAll('[data-connection]')].map((e) => e.querySelector('span.font-bold').textContent)`);
+const firstTwo = (await names()).slice(0, 2);
+await js(`document.querySelector('[aria-label="Collapse ${MY}"]').click()`);
+check('a connection collapses', await until(() => js(`!!document.querySelector('[aria-label="Expand ${MY}"]') && ![...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'New database' && b.offsetParent)`)));
+check('a collapsed connection still names its database', (await js(`document.querySelector('[aria-label="Expand ${MY}"]').textContent`)).includes('studio'));
+await js(`document.querySelector('[aria-label="Expand ${MY}"]').click()`);
+check('and expands again', await until(() => js(`!!document.querySelector('[aria-label="Collapse ${MY}"]')`)));
+await js(`t.click('Collapse all')`);
+check('Collapse all closes every connection', await until(() => js(`[...document.querySelectorAll('[data-connection] [aria-expanded]')].every((b) => b.getAttribute('aria-expanded') === 'false')`)));
+await js(`t.click('Expand all')`);
+const gripAt = (name) => js(`(() => {
+  const r = document.querySelector(${JSON.stringify(`[aria-label="Move ${MY}"]`)}).getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+})()`);
+const firstTop = () => js(`document.querySelector('[data-connection]').getBoundingClientRect().top`);
+const from = await gripAt(MY);
+const top = await firstTop();
+await mouse([['mouseMoved', from.x, from.y], ['mousePressed', from.x, from.y], ['mouseMoved', from.x, top + 20], ['mouseMoved', from.x, top + 3], ['mouseReleased', from.x, top + 3]]);
+check('dragging moves a connection to the top', await until(async () => (await names())[0] === MY), String(await names()));
+await shot('28-reordered');
+await js(`document.querySelector(${JSON.stringify(`[aria-label="Move ${MY}"]`)}).focus()`);
+await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowDown', code: 'ArrowDown', modifiers: 1, windowsVirtualKeyCode: 40 });
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', modifiers: 1, windowsVirtualKeyCode: 40 });
+check('Alt+Down moves it one place down', await until(async () => (await names())[1] === MY), String(await names()));
+check('the order is remembered', (await js(`localStorage.getItem('studio.connectionOrder') ?? ''`)).includes('"'));
+{
+  const after = await names();
+  check('nothing else was lost', firstTwo.every((n) => after.includes(n)), String(after));
+}
+// The left bar: every item the same size, and the open tab marked.
+const rail = await js(`[...document.querySelectorAll('nav[aria-label="Main"] button')].map((b) => Math.round(b.getBoundingClientRect().height))`);
+check('left bar items are all the same size', new Set(rail).size === 1, String(rail));
+await js(`document.querySelector('[aria-label="Audit log"]').click()`);
+check('the open tab is marked in the left bar', await until(() => js(`document.querySelector('[aria-label="Audit log"]').getAttribute('aria-pressed') === 'true'`)));
+await shot('27-left-bar');
 
 await js(`document.querySelector('[aria-label="Disconnect ${MY}"]').click()`);
 await until(() => js(`!!document.querySelector('[aria-label="Connect ${MY}"]')`));

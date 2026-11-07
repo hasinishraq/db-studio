@@ -223,6 +223,99 @@ pub async fn plan_create_table(
     plan_table(open.engine(), &table, &columns)
 }
 
+/// The longest database name each server accepts.
+fn longest_name(engine: Engine) -> usize {
+    match engine {
+        Engine::MySql => 64,
+        _ => 63,
+    }
+}
+
+/// Writes CREATE DATABASE. The name is quoted, so any text is only ever a name.
+pub fn plan_database(engine: Engine, name: &str, charset: Option<&str>) -> Result<PlannedSql, AppError> {
+    if engine == Engine::Sqlite {
+        return Err(AppError::invalid(
+            "a SQLite file holds one database; open another file instead",
+        ));
+    }
+    check_text("the database name", name, longest_name(engine))?;
+    if name.chars().any(char::is_control) {
+        return Err(AppError::invalid("the database name holds a control character"));
+    }
+    let mut sql = format!("CREATE DATABASE {}", quote_ident(engine, name));
+    match (engine, charset) {
+        (Engine::MySql, Some(set)) => {
+            // A character set is a bare word, so only letters, digits and underscores may pass.
+            if set.is_empty() || set.len() > 32 || !set.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            {
+                return Err(AppError::invalid("that is not a character set name"));
+            }
+            sql.push_str(&format!(" CHARACTER SET {set}"));
+        }
+        (_, Some(_)) => return Err(AppError::invalid("only MySQL takes a character set here")),
+        (_, None) => {}
+    }
+    let warnings = match engine {
+        Engine::Postgres => vec!["PostgreSQL cannot create a database inside a transaction.".to_owned()],
+        _ => Vec::new(),
+    };
+    Ok(PlannedSql { sql, warnings })
+}
+
+/// Generates CREATE DATABASE for the confirm flow.
+#[tauri::command]
+#[specta::specta]
+pub async fn plan_create_database(
+    state: State<'_, AppState>,
+    session_id: SessionId,
+    name: String,
+    charset: Option<String>,
+) -> Result<PlannedSql, AppError> {
+    let open = state.sessions.get(session_id).app()?;
+    plan_database(open.engine(), &name, charset.as_deref())
+}
+
+#[cfg(test)]
+mod database_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn names_are_quoted_for_each_engine() {
+        assert_eq!(
+            plan_database(Engine::Postgres, "shop", None).unwrap().sql,
+            r#"CREATE DATABASE "shop""#
+        );
+        let mysql = plan_database(Engine::MySql, "shop", Some("utf8mb4")).unwrap();
+        assert_eq!(mysql.sql, "CREATE DATABASE `shop` CHARACTER SET utf8mb4");
+    }
+
+    #[test]
+    fn a_hostile_name_stays_one_statement() {
+        for (engine, name) in [
+            (Engine::Postgres, r#"x"; DROP DATABASE studio; --"#),
+            (Engine::MySql, "x`; DROP DATABASE studio; --"),
+        ] {
+            let sql = plan_database(engine, name, None).unwrap().sql;
+            assert_eq!(studio_safety::classify_script(&sql, engine).len(), 1, "{sql}");
+            assert!(!studio_safety::verdicts(&sql, engine)[0].read_only);
+        }
+    }
+
+    #[test]
+    fn bad_input_is_refused() {
+        assert!(plan_database(Engine::Sqlite, "x", None).is_err());
+        assert!(plan_database(Engine::Postgres, "  ", None).is_err());
+        assert!(plan_database(Engine::Postgres, &"x".repeat(64), None).is_err());
+        assert!(plan_database(Engine::MySql, &"x".repeat(64), None).is_ok());
+        assert!(plan_database(Engine::MySql, "a\nb", None).is_err());
+        assert!(plan_database(Engine::MySql, r"a\b", None).is_ok());
+        assert!(plan_database(Engine::MySql, "a\u{0}b", None).is_err());
+        assert!(plan_database(Engine::MySql, "x", Some("utf8; DROP")).is_err());
+        assert!(plan_database(Engine::Postgres, "x", Some("utf8")).is_err());
+    }
+}
+
 #[cfg(test)]
 mod rows_tests {
     #![allow(clippy::unwrap_used)]

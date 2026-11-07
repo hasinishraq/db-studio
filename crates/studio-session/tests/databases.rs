@@ -85,3 +85,15 @@ async fn sqlite_has_nothing_to_change() {
     let result = h.manager.use_database(id.session_id, "other", None, None).await;
     assert!(matches!(result, Err(SessionError::Refused(_))));
 }
+
+#[tokio::test]
+async fn a_dropped_mysql_database_is_forgotten() {
+    let h = harness();
+    let mut p = mysql();
+    p.database = "gone".into();
+    let id = h.manager.connect(p, None, None).await.unwrap().session_id;
+    assert_eq!(h.manager.current_database(id).await.as_deref(), Some("gone"));
+    // The fake server lists only `public`.
+    h.manager.list_schemas(id).await.unwrap();
+    assert_eq!(h.manager.current_database(id).await, None);
+}

@@ -231,6 +231,29 @@ apply. Nothing has been committed; the human reviews and commits.
 - Checked: dark and light screenshots of every screen the suites cover. E2E 39/39, 20/20 and 43/43 in
   dark; 39/39 and 43/43 in light.
 
+## After hand-over: new database, left bar
+- "New database" in the side panel, for MySQL and PostgreSQL. `plan_create_database` writes the
+  statement in Rust with the name quoted; MySQL may add a character set from letters, digits and `_`
+  only. It goes through the normal review, and "Use it now" then makes it the default.
+- The left bar items share one size, carry a label, and mark the open Assistant, Audit or Settings tab.
+- Checked: 278 Rust tests, 48 frontend tests, clippy and fmt clean, E2E 39/39, 20/20 and 49/49.
+- Test note: the "your database untouched" check in the local E2E script compares file stamps, so it
+  reports False when the installed app is in use during a run. That happened once, from pid 17316.
+
+## After hand-over: collapsing, reordering, closing results, button text
+- Connections and PostgreSQL databases collapse and expand. Collapse all and Expand all appear when
+  there is more than one connection. A search still shows matches in a collapsed connection, and a
+  collapsed one names its database in use. State is kept in localStorage.
+- Connections reorder by dragging the grip, or with Alt+Up and Alt+Down on it. The order is kept in
+  localStorage (`studio.connectionOrder`), not in the profile. Pointer events are used because Tauri
+  takes over HTML drag and drop on Windows for file drops.
+- Query results have a Close button. It clears and hides the results and the log until the next run.
+- Text on safe, change and danger uses `--on-safe`, `--on-change` and `--on-danger` per theme.
+  Dark: dark text, 5.8, 7.1 and 5.3:1. Light: white, 5.2, 4.9 and 5.9:1. Before, light Run was 3.3:1.
+- Fixed: a dropped MySQL database stayed the default. `list_schemas` now forgets it, and the panel
+  clears the bold mark.
+- Checked: Rust and frontend tests, clippy, fmt, E2E 39/39, 20/20 and 61/61 in dark and 61/61 in light.
+
 ## Verification at hand-over
 - `cargo test --workspace` with every server up, including MySQL TLS: 250 passed, 0 failed, 0 skipped.
 - `npm test`: 34 passed. Clippy, fmt and `cargo deny check` clean.

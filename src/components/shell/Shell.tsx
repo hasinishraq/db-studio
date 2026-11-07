@@ -116,8 +116,41 @@ function Palette({ onClose, actions }: { onClose: () => void; actions: { label: 
   );
 }
 
+/** One item of the left bar. Every item is the same size, so the bar lines up. */
+function RailButton({
+  label,
+  short,
+  icon: Icon,
+  active,
+  onClick,
+}: {
+  label: string;
+  short: string;
+  icon: typeof Database;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      onClick={onClick}
+      className={clsx(
+        'flex h-14 w-full flex-col items-center justify-center gap-1 text-[11px] leading-none',
+        active ? 'here text-ink' : 'text-muted hover:bg-raised hover:text-ink',
+      )}
+    >
+      <Icon size={19} aria-hidden />
+      <span>{short}</span>
+    </button>
+  );
+}
+
 /** The band down the window's edge says which environment you are touching. */
 const BAND = { Development: 'bg-safe', Staging: 'bg-change', Production: 'bg-danger' } as const;
+const ON_BAND = { Development: 'text-on-safe', Staging: 'text-on-change', Production: 'text-on-danger' } as const;
 
 export function Shell() {
   const { tabs, activeId, activate, closeTab, openTab, activeProfile, sessions, setSession, profiles } = useStudio();
@@ -202,10 +235,10 @@ export function Shell() {
   }, []);
 
   const environment = activeProfile?.environment;
-  const sideItems: { id: Side; label: string; icon: typeof Database }[] = [
-    { id: 'explorer', label: 'Connections', icon: Database },
-    { id: 'history', label: 'History', icon: History },
-    { id: 'drafts', label: 'Saved queries', icon: FileClock },
+  const sideItems: { id: Side; label: string; short: string; icon: typeof Database }[] = [
+    { id: 'explorer', label: 'Connections', short: 'Explorer', icon: Database },
+    { id: 'history', label: 'History', short: 'History', icon: History },
+    { id: 'drafts', label: 'Saved queries', short: 'Saved', icon: FileClock },
   ];
   const paletteActions = [
     { label: 'New query', run: newQuery },
@@ -234,7 +267,7 @@ export function Shell() {
             </span>
           )}
           {environment && environment !== 'Development' && (
-            <span className={clsx('rounded px-1.5 text-xs font-bold text-white', BAND[environment])}>{environment}</span>
+            <span className={clsx('rounded px-1.5 text-xs font-bold', BAND[environment], ON_BAND[environment])}>{environment}</span>
           )}
           {activeProfile?.readOnly && <span className="rounded border border-line px-1.5 text-xs">Read-only</span>}
           {notice && (
@@ -247,35 +280,30 @@ export function Shell() {
           )}
         </header>
         <div className="flex min-h-0 flex-1">
-          <nav aria-label="Main" className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-line bg-panel py-2">
-            {sideItems.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                aria-label={label}
-                title={label}
-                aria-pressed={side === id && showSide}
-                className={clsx(
-                  'flex h-8 w-full items-center justify-center',
-                  side === id && showSide ? 'here text-ink' : 'text-muted hover:text-ink',
-                )}
+          <nav aria-label="Main" className="flex w-16 shrink-0 flex-col border-r border-line bg-panel py-1">
+            {sideItems.map((item) => (
+              <RailButton
+                key={item.id}
+                {...item}
+                active={side === item.id && showSide}
                 onClick={() => {
-                  setShowSide(side !== id || !showSide);
-                  setSide(id);
+                  setShowSide(side !== item.id || !showSide);
+                  setSide(item.id);
                 }}
-              >
-                <Icon size={18} />
-              </button>
+              />
             ))}
-            <button type="button" aria-label="Assistant" title="Assistant" className="text-muted hover:text-ink" onClick={openAi}>
-              <Bot size={18} />
-            </button>
-            <button type="button" aria-label="Audit log" title="Audit log" className="text-muted hover:text-ink" onClick={openAudit}>
-              <ShieldCheck size={18} />
-            </button>
-            <button type="button" aria-label="Settings" title="Settings" className="mt-auto text-muted hover:text-ink" onClick={openSettings}>
-              <Settings size={18} />
-            </button>
+            <div aria-hidden className="mx-3 my-1 h-px bg-line" />
+            <RailButton label="Assistant" short="Assistant" icon={Bot} active={activeId === 'ai'} onClick={openAi} />
+            <RailButton label="Audit log" short="Audit" icon={ShieldCheck} active={activeId === 'audit'} onClick={openAudit} />
+            <div className="mt-auto">
+              <RailButton
+                label="Settings"
+                short="Settings"
+                icon={Settings}
+                active={activeId === 'settings'}
+                onClick={openSettings}
+              />
+            </div>
           </nav>
           <Group orientation="horizontal" className="min-w-0 flex-1">
             {showSide && (

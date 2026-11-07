@@ -19,6 +19,9 @@ export default {
         safe: mix('safe'),
         change: mix('change'),
         danger: mix('danger'),
+        'on-safe': mix('on-safe'),
+        'on-change': mix('on-change'),
+        'on-danger': mix('on-danger'),
       },
       fontFamily: {
         sans: ['"Atkinson Hyperlegible"', 'system-ui', 'sans-serif'],

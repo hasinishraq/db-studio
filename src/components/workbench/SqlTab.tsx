@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Play, Square } from 'lucide-react';
+import { Play, Square, X } from 'lucide-react';
 import { api, ApiError, errorMessage } from '../../api';
 import { runFlow } from '../../api/run';
 import type { ColumnInfo, ExportFormat, TxState } from '../../bindings';
@@ -83,6 +83,8 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
   // The last rows shown stay on screen when a later statement returns none.
   const [kept, setKept] = useState<{ store: ResultStore; sql: string } | null>(null);
   const [stale, setStale] = useState(false);
+  // Closing hides the results and the log until the next run.
+  const [resultsOpen, setResultsOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
@@ -117,6 +119,7 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
     const text = override ?? (editor.current?.selection() || sql);
     const next = new ResultStore();
     const id = newId();
+    setResultsOpen(true);
     setStore(next);
     setActive(0);
     setPlan(null);
@@ -172,6 +175,15 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
       setRunId(null);
       window.dispatchEvent(new Event('studio:run-finished'));
     }
+  };
+
+  const closeResults = () => {
+    setResultsOpen(false);
+    setStore(null);
+    setKept(null);
+    setStale(false);
+    setPlan(null);
+    setError(null);
   };
 
   const stop = () => {
@@ -279,12 +291,13 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
         <Panel defaultSize="45%" minSize="15%">
           <SqlEditor value={sql} onChange={setSql} onRun={() => void run()} columns={columns} handle={editor} />
         </Panel>
-        <Separator aria-label="Resize editor" className="h-1.5 bg-line hover:bg-edge" />
+        {resultsOpen && <Separator aria-label="Resize editor" className="h-1.5 bg-line hover:bg-edge" />}
+        {resultsOpen && (
         <Panel minSize="15%">
           <div className="flex h-full flex-col">
-            {withRows.length > 1 && (
-              <div className="flex gap-1 border-b border-line px-2">
-                {withRows.map(([index], position) => (
+            <div className="flex items-center gap-1 border-b border-line bg-panel pl-2">
+              {withRows.length > 1 &&
+                withRows.map(([index], position) => (
                   <button
                     key={index}
                     type="button"
@@ -294,8 +307,18 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
                     Result {position + 1}
                   </button>
                 ))}
-              </div>
-            )}
+              {withRows.length <= 1 && <span className="py-1 text-xs font-bold text-muted">Results</span>}
+              <Button
+                tone="quiet"
+                className="ml-auto px-2 py-0.5 text-xs"
+                aria-label="Close results"
+                title="Close results and log. They open again on the next run."
+                disabled={Boolean(runId)}
+                onClick={closeResults}
+              >
+                <X size={13} aria-hidden /> Close
+              </Button>
+            </div>
             <ErrorNote message={error} />
             {stale && current && (
               <div className="flex items-center gap-2 border-b border-line px-2 py-1 text-sm">
@@ -322,6 +345,7 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
             </WithLog>
           </div>
         </Panel>
+        )}
       </Group>
     </div>
   );

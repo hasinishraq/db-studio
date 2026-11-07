@@ -19,6 +19,9 @@
   --pick: #33506b;
   --ink: #eef2f5;
   --muted: #a9b8c4;
+  --on-safe: #08201b;
+  --on-change: #211500;
+  --on-danger: #1c0604;
   --safe: #3fa796;
   --change: #d9962b;
   --danger: #e2574a;
@@ -35,6 +38,9 @@
   --pick: #cfe0ee;
   --ink: #15212c;
   --muted: #4f6070;
+  --on-safe: #ffffff;
+  --on-change: #ffffff;
+  --on-danger: #ffffff;
   --safe: #1f7a6b;
   --change: #9c6510;
   --danger: #b93226;

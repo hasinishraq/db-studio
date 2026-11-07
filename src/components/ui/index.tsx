@@ -9,9 +9,9 @@ type Tone = 'plain' | 'quiet' | 'primary' | 'change' | 'danger';
 const TONES: Record<Tone, string> = {
   plain: 'border-edge bg-raised text-ink hover:bg-pick',
   quiet: 'border-transparent bg-transparent text-muted hover:border-edge hover:bg-raised hover:text-ink',
-  primary: 'border-transparent bg-safe font-bold text-[#08201b] hover:brightness-110',
-  change: 'border-transparent bg-change font-bold text-[#211500] hover:brightness-110',
-  danger: 'border-transparent bg-danger font-bold text-white hover:brightness-110',
+  primary: 'border-transparent bg-safe font-bold text-on-safe hover:brightness-110',
+  change: 'border-transparent bg-change font-bold text-on-change hover:brightness-110',
+  danger: 'border-transparent bg-danger font-bold text-on-danger hover:brightness-110',
 };
 
 export function Button({

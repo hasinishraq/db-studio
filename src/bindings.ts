@@ -73,6 +73,8 @@ export const commands = {
 	planRowChange: (sessionId: SessionId, table: TableRef, change: RowChange) => typedError<PlannedSql, AppError>(__TAURI_INVOKE("plan_row_change", { sessionId, table, change })),
 	/**  Generates CREATE TABLE for the confirm flow. */
 	planCreateTable: (sessionId: SessionId, table: TableRef, columns: NewColumn[]) => typedError<PlannedSql, AppError>(__TAURI_INVOKE("plan_create_table", { sessionId, table, columns })),
+	/**  Generates CREATE DATABASE for the confirm flow. */
+	planCreateDatabase: (sessionId: SessionId, name: string, charset: string | null) => typedError<PlannedSql, AppError>(__TAURI_INVOKE("plan_create_database", { sessionId, name, charset })),
 	/**  Writes a schema's structure to a file the user chooses, and says how many objects it held. */
 	exportSchema: (sessionId: SessionId, schema: string) => typedError<number, AppError>(__TAURI_INVOKE("export_schema", { sessionId, schema })),
 	/**  Asks for a script and returns its text. The path stays here, in Rust. */
