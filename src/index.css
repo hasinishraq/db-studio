@@ -1,0 +1,67 @@
+@import '@fontsource/atkinson-hyperlegible/400.css';
+@import '@fontsource/atkinson-hyperlegible/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Colour means risk and nothing else: safe, change and danger carry all of it. */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --ground: #1b2733;
+  --panel: #223040;
+  --raised: #2a3a48;
+  --line: #3a4c5b;
+  --ink: #e6ecf0;
+  --muted: #9fb0bc;
+  --safe: #3fa796;
+  --change: #d9962b;
+  --danger: #e2574a;
+  --series: #4f97d6;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --ground: #f1f4f6;
+  --panel: #e6ebef;
+  --raised: #ffffff;
+  --line: #c9d3da;
+  --ink: #1b2733;
+  --muted: #566875;
+  --safe: #1f7a6b;
+  --change: #9c6510;
+  --danger: #b93226;
+  --series: #2f73b0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+:focus-visible {
+  outline: 2px solid var(--safe);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--safe) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

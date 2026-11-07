@@ -1,0 +1,76 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "deny"
+todo = "warn"
+
+[workspace.dependencies]
+# runtime and utilities
+tokio       = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
+tokio-util  = { version = "0.7", features = ["rt"] }
+futures     = "0.3"
+async-trait = "0.1"
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+thiserror   = "2"
+anyhow      = "1"
+uuid        = { version = "1", features = ["v4", "serde"] }
+chrono      = { version = "0.4", default-features = false, features = ["std", "clock"] }
+dashmap     = "6"
+secrecy     = "0.10"
+sha2        = "0.10"
+rand        = "0.8"
+hex         = "0.4"
+tracing     = "0.1"
+base64      = "0.22"
+# IPC types: tauri-specta 2.0.0-rc.26 pins specta exactly and needs specta-typescript 0.0.13
+specta            = { version = "=2.0.0-rc.26", features = ["derive"] }
+specta-typescript = "=0.0.13"
+tauri-specta      = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
+# databases
+tokio-postgres        = "0.7"
+deadpool-postgres     = "0.14"
+tokio-postgres-rustls = "0.14"
+mysql_async           = { version = "0.37", default-features = false, features = ["default-rustls-ring"] }
+rusqlite              = { version = "0.39", features = ["bundled", "column_decltype"] }
+sqlx                  = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+rustls                = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-native-certs   = "0.8"
+# safety, tunnel, secrets, AI
+sqlparser = { version = "0.63", features = ["visitor"] }
+russh     = { version = "0.65", default-features = false, features = ["ring", "rsa"] }
+keyring   = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+rig-core  = { version = "0.46", features = ["reqwest"] }
+# testing
+insta     = { version = "1", features = ["json"] }
+proptest  = "1"
+tempfile  = "3"
+# internal crates
+studio-types    = { path = "crates/studio-types" }
+studio-db       = { path = "crates/studio-db" }
+studio-safety   = { path = "crates/studio-safety" }
+studio-tunnel   = { path = "crates/studio-tunnel" }
+studio-session  = { path = "crates/studio-session" }
+studio-store    = { path = "crates/studio-store" }
+studio-ai       = { path = "crates/studio-ai" }
+driver-postgres = { path = "crates/driver-postgres" }
+driver-mysql    = { path = "crates/driver-mysql" }
+driver-sqlite   = { path = "crates/driver-sqlite" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

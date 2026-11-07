@@ -1,0 +1,30 @@
+[package]
+name = "studio-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+studio-types.workspace = true
+studio-db.workspace = true
+studio-safety.workspace = true
+studio-session.workspace = true
+studio-store.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+secrecy.workspace = true
+dashmap.workspace = true
+tracing.workspace = true
+rig-core.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+studio-session = { workspace = true, features = ["testing"] }

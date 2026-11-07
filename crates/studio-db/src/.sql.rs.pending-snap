@@ -1,0 +1,22 @@
+{"run_id":"1794063738-169530900","line":232,"new":{"module_name":"studio_db__sql__tests","snapshot_name":"sqlite_where_clause","metadata":{"source":"crates/studio-db/src/sql.rs","assertion_line":232,"expression":"clause.sql"},"snapshot":" WHERE \"a\" <> ? AND CAST(\"b\" AS TEXT) LIKE ? ESCAPE '!'"},"old":{"module_name":"studio_db__sql__tests","metadata":{},"snapshot":"WHERE \"a\" <> ? AND CAST(\"b\" AS TEXT) LIKE ? ESCAPE '!'"}}
+{"run_id":"1794063738-169530900","line":223,"new":{"module_name":"studio_db__sql__tests","snapshot_name":"mysql_where_clause","metadata":{"source":"crates/studio-db/src/sql.rs","assertion_line":223,"expression":"clause.sql"},"snapshot":" WHERE `age` < ? AND CAST(`name` AS CHAR) LIKE ? ESCAPE '!'"},"old":{"module_name":"studio_db__sql__tests","metadata":{},"snapshot":"WHERE `age` < ? AND CAST(`name` AS CHAR) LIKE ? ESCAPE '!'"}}
+{"run_id":"1794063758-455667900","line":188,"new":null,"old":null}
+{"run_id":"1794063758-455667900","line":223,"new":null,"old":null}
+{"run_id":"1794063758-455667900","line":213,"new":null,"old":null}
+{"run_id":"1794063758-455667900","line":232,"new":null,"old":null}
+{"run_id":"1794068034-661731800","line":238,"new":null,"old":null}
+{"run_id":"1794068034-661731800","line":228,"new":null,"old":null}
+{"run_id":"1794068034-661731800","line":203,"new":null,"old":null}
+{"run_id":"1794068034-661731800","line":247,"new":null,"old":null}
+{"run_id":"1794072137-253532900","line":239,"new":null,"old":null}
+{"run_id":"1794072137-253532900","line":248,"new":null,"old":null}
+{"run_id":"1794072137-253532900","line":229,"new":null,"old":null}
+{"run_id":"1794072137-253532900","line":204,"new":null,"old":null}
+{"run_id":"1794073898-175729700","line":204,"new":null,"old":null}
+{"run_id":"1794073898-175729700","line":239,"new":null,"old":null}
+{"run_id":"1794073898-175729700","line":229,"new":null,"old":null}
+{"run_id":"1794073898-175729700","line":248,"new":null,"old":null}
+{"run_id":"1794077874-127443200","line":229,"new":null,"old":null}
+{"run_id":"1794077874-127443200","line":248,"new":null,"old":null}
+{"run_id":"1794077874-127443200","line":204,"new":null,"old":null}
+{"run_id":"1794077874-127443200","line":239,"new":null,"old":null}

@@ -1,0 +1,17 @@
+target/
+node_modules/
+dist/
+.env*
+*.db
+*.db-shm
+*.db-wal
+src-tauri/gen/
+*.snap.new
+# test-only key material is generated, never committed
+docker/tls/*.crt
+docker/tls/*.key
+docker/tls/*.srl
+docker/tls/*.csr
+docker/ssh/test_key
+docker/ssh/test_key.pub
+.test-services/

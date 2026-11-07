@@ -1,0 +1,32 @@
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+# Every exception needs a reason. Review these before each release.
+ignore = [
+  # rsa, through russh, for RSA SSH keys. No patched release exists. The attack needs precise timing
+  # of private-key operations; here a key signs locally on the user's machine, not in a network service.
+  { id = "RUSTSEC-2023-0071", reason = "RSA signing only, on the user's own machine; no fix released" },
+  # paste: a build-time macro used by specta. Runs at compile time only.
+  { id = "RUSTSEC-2024-0436", reason = "compile-time macro, required by the pinned specta" },
+  # proc-macro-error: a build-time macro under Tauri's Linux GTK stack.
+  { id = "RUSTSEC-2024-0370", reason = "compile-time macro, under Tauri's GTK dependencies" },
+  # zvariant family: under zbus, which tauri-plugin-opener uses on Linux. Unmaintained, not vulnerable.
+  { id = "RUSTSEC-2026-0370", reason = "transitive through tauri-plugin-opener; no advisory of a flaw" },
+  { id = "RUSTSEC-2026-0371", reason = "transitive through tauri-plugin-opener; no advisory of a flaw" },
+  { id = "RUSTSEC-2026-0372", reason = "transitive through tauri-plugin-opener; no advisory of a flaw" },
+]
+
+[licenses]
+version = 2
+allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC",
+  "Unicode-3.0", "Unicode-DFS-2016", "Zlib", "MPL-2.0", "CC0-1.0", "BSL-1.0", "CDLA-Permissive-2.0", "OpenSSL"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -1,0 +1,20 @@
+[package]
+name = "studio-safety"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+studio-types.workspace = true
+sqlparser.workspace = true
+sha2.workspace = true
+rand.workspace = true
+hex.workspace = true
+dashmap.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
