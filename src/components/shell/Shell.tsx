@@ -35,7 +35,7 @@ function HistoryList() {
         <button
           key={entry.id}
           type="button"
-          className="mb-1 block w-full truncate rounded px-1 py-0.5 text-left font-mono text-xs hover:bg-raised"
+          className="mb-0.5 block w-full truncate rounded px-1.5 py-1 text-left font-mono text-xs hover:bg-raised"
           title={entry.sql}
           onClick={() =>
             openTab({ id: newId(), kind: 'sql', title: 'From history', profileId: entry.profileId, draftId: null, sql: entry.sql })
@@ -58,7 +58,7 @@ function DraftList() {
         <button
           key={draft.id}
           type="button"
-          className="block w-full truncate rounded px-1 py-0.5 text-left hover:bg-raised"
+          className="block w-full truncate rounded px-1.5 py-1 text-left hover:bg-raised"
           onClick={() =>
             openTab({ id: draft.id, kind: 'sql', title: draft.title, profileId: draft.profileId, draftId: draft.id, sql: draft.sql })
           }
@@ -105,7 +105,7 @@ function Palette({ onClose, actions }: { onClose: () => void; actions: { label: 
                 action.run();
                 onClose();
               }}
-              className="cursor-pointer rounded px-2 py-1 text-sm data-[selected=true]:bg-raised"
+              className="cursor-pointer rounded px-2 py-1 text-sm data-[selected=true]:here"
             >
               {action.label}
             </Command.Item>
@@ -247,14 +247,18 @@ export function Shell() {
           )}
         </header>
         <div className="flex min-h-0 flex-1">
-          <nav aria-label="Main" className="flex w-10 shrink-0 flex-col items-center gap-3 border-r border-line bg-panel py-2">
+          <nav aria-label="Main" className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-line bg-panel py-2">
             {sideItems.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
                 aria-label={label}
                 title={label}
-                className={side === id && showSide ? 'text-ink' : 'text-muted hover:text-ink'}
+                aria-pressed={side === id && showSide}
+                className={clsx(
+                  'flex h-8 w-full items-center justify-center',
+                  side === id && showSide ? 'here text-ink' : 'text-muted hover:text-ink',
+                )}
                 onClick={() => {
                   setShowSide(side !== id || !showSide);
                   setSide(id);
@@ -281,24 +285,42 @@ export function Shell() {
                     {side === 'explorer' ? <Explorer /> : side === 'history' ? <HistoryList /> : <DraftList />}
                   </div>
                 </Panel>
-                <Separator className="w-px bg-line" />
+                <Separator className="w-1 bg-line hover:bg-edge" />
               </>
             )}
             <Panel>
               <div className="flex h-full min-w-0 flex-col">
-                <div role="tablist" className="flex overflow-x-auto border-b border-line bg-panel">
+                <div role="tablist" className="flex overflow-x-auto overflow-y-hidden border-b border-line bg-panel">
                   {tabs.map((tab) => (
                     <div
                       key={tab.id}
                       className={clsx(
-                        'flex shrink-0 items-center gap-1 border-r border-line px-3 py-1 text-sm',
-                        tab.id === activeId ? 'bg-ground' : 'text-muted',
+                        'group flex shrink-0 items-center gap-1 border-r border-line pl-3 pr-1.5 text-sm',
+                        // The active tab joins the workspace under it.
+                        tab.id === activeId
+                          ? 'here-top bg-ground font-bold text-ink'
+                          : 'text-muted hover:bg-raised hover:text-ink',
                       )}
                     >
-                      <button type="button" role="tab" aria-selected={tab.id === activeId} onClick={() => activate(tab.id)}>
+                      <button
+                        type="button"
+                        role="tab"
+                        className="py-1.5"
+                        aria-selected={tab.id === activeId}
+                        onClick={() => activate(tab.id)}
+                      >
                         {tab.title}
                       </button>
-                      <button type="button" aria-label={`Close ${tab.title}`} onClick={() => closeTab(tab.id)}>
+                      <button
+                        type="button"
+                        aria-label={`Close ${tab.title}`}
+                        title="Close"
+                        className={clsx(
+                          'rounded p-0.5 hover:bg-pick',
+                          tab.id === activeId ? 'opacity-100' : 'opacity-0 focus:opacity-100 group-hover:opacity-100',
+                        )}
+                        onClick={() => closeTab(tab.id)}
+                      >
                         <X size={12} />
                       </button>
                     </div>

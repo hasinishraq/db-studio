@@ -5,16 +5,20 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Colour means risk and nothing else: safe, change and danger carry all of it. */
+/* Colour means risk and nothing else: safe, change and danger carry all of it.
+   Everything else is told apart by depth (ground, panel, raised), by a visible edge on anything
+   clickable, and by one mark for where you are: the ink bar on a picked background. */
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --ground: #1b2733;
-  --panel: #223040;
-  --raised: #2a3a48;
-  --line: #3a4c5b;
-  --ink: #e6ecf0;
-  --muted: #9fb0bc;
+  --ground: #121b24;
+  --panel: #1b2633;
+  --raised: #273647;
+  --line: #2f4153;
+  --edge: #5d7891;
+  --pick: #33506b;
+  --ink: #eef2f5;
+  --muted: #a9b8c4;
   --safe: #3fa796;
   --change: #d9962b;
   --danger: #e2574a;
@@ -23,12 +27,14 @@
 
 [data-theme='light'] {
   color-scheme: light;
-  --ground: #f1f4f6;
-  --panel: #e6ebef;
+  --ground: #f6f8fa;
+  --panel: #e6ecf1;
   --raised: #ffffff;
-  --line: #c9d3da;
-  --ink: #1b2733;
-  --muted: #566875;
+  --line: #d3dce3;
+  --edge: #74879a;
+  --pick: #cfe0ee;
+  --ink: #15212c;
+  --muted: #4f6070;
   --safe: #1f7a6b;
   --change: #9c6510;
   --danger: #b93226;
@@ -50,9 +56,24 @@ body {
   overflow: hidden;
 }
 
+/* Not green: green means safe here. */
 :focus-visible {
-  outline: 2px solid var(--safe);
+  outline: 2px solid var(--ink);
   outline-offset: 1px;
+}
+
+@layer components {
+  /* Where you are: a tab, the chosen database, a selected row. */
+  .here {
+    background: var(--pick);
+    box-shadow: inset 3px 0 0 var(--ink);
+  }
+  .here-top {
+    box-shadow: inset 0 2px 0 var(--ink);
+  }
+  .stripe {
+    background: color-mix(in srgb, var(--panel) 60%, transparent);
+  }
 }
 
 ::selection {

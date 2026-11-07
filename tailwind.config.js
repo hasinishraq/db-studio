@@ -1,3 +1,6 @@
+/** A theme colour that still takes an opacity, as in `border-line/40`. */
+const mix = (name) => `color-mix(in srgb, var(--${name}) calc(<alpha-value> * 100%), transparent)`;
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
@@ -5,15 +8,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        ground: 'var(--ground)',
-        panel: 'var(--panel)',
-        raised: 'var(--raised)',
-        line: 'var(--line)',
-        ink: 'var(--ink)',
-        muted: 'var(--muted)',
-        safe: 'var(--safe)',
-        change: 'var(--change)',
-        danger: 'var(--danger)',
+        ground: mix('ground'),
+        panel: mix('panel'),
+        raised: mix('raised'),
+        line: mix('line'),
+        edge: mix('edge'),
+        pick: mix('pick'),
+        ink: mix('ink'),
+        muted: mix('muted'),
+        safe: mix('safe'),
+        change: mix('change'),
+        danger: mix('danger'),
       },
       fontFamily: {
         sans: ['"Atkinson Hyperlegible"', 'system-ui', 'sans-serif'],

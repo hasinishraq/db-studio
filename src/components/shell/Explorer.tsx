@@ -1,6 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Database, Eye, Pencil, Plug, Plus, Table, Trash2, Unplug } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Database,
+  Eye,
+  Grid2x2Plus,
+  Network,
+  Pencil,
+  Plug,
+  Plus,
+  Table,
+  Trash2,
+  Unplug,
+} from 'lucide-react';
 import { api, ApiError, errorMessage } from '../../api';
 import type { ConnectionProfile, DbObject, HostKeyDetail, SessionId } from '../../bindings';
 import { newId, useStudio } from '../../context/Studio';
@@ -27,7 +40,7 @@ function ObjectRow({ object, profile }: { object: DbObject; profile: ConnectionP
     <button
       type="button"
       onClick={open}
-      className="flex w-full items-center gap-1.5 rounded py-0.5 pl-9 pr-2 text-left text-sm hover:bg-raised"
+      className="flex w-full items-center gap-1.5 rounded-r py-1 pl-3 pr-2 text-left text-sm hover:bg-raised"
     >
       <Icon size={13} className="shrink-0 text-muted" aria-hidden />
       <span className="truncate">{object.name}</span>
@@ -42,6 +55,7 @@ function SchemaNode({
   search,
   chosen = false,
   onChoose,
+  nested = false,
 }: {
   session: SessionId;
   schema: string;
@@ -49,7 +63,11 @@ function SchemaNode({
   search: string;
   chosen?: boolean;
   onChoose?: () => void;
+  nested?: boolean;
 }) {
+  // Under a PostgreSQL database the schemas sit one level deeper.
+  const indent = nested ? 'pl-3' : 'pl-5';
+  const guide = nested ? 'ml-5' : 'ml-7';
   const { openTab } = useStudio();
   const [expanded, setExpanded] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -63,7 +81,7 @@ function SchemaNode({
   const Chevron = expanded || searching ? ChevronDown : ChevronRight;
   return (
     <div>
-      <div className="flex items-center">
+      <div className={`group flex items-center gap-1 pr-1 ${chosen ? 'here' : 'hover:bg-raised'}`}>
         <button
           type="button"
           aria-expanded={expanded}
@@ -73,26 +91,37 @@ function SchemaNode({
             setExpanded(onChoose && !chosen ? true : !expanded);
             onChoose?.();
           }}
-          className="flex min-w-0 flex-1 items-center gap-1 py-0.5 pl-5 text-sm hover:bg-raised"
+          className={`flex min-w-0 flex-1 items-center gap-1 py-1 text-sm ${indent}`}
         >
-          <Chevron size={13} aria-hidden />
+          <Chevron size={13} aria-hidden className="shrink-0 text-muted" />
           <span className={`truncate ${chosen ? 'font-bold' : ''}`}>{schema}</span>
         </button>
-        <button type="button" className="px-1 text-xs text-muted hover:text-ink" onClick={() => setCreating(true)}>
-          New table
-        </button>
-        <button
-          type="button"
-          className="px-2 text-xs text-muted hover:text-ink"
+        {chosen && <span className="shrink-0 text-xs text-muted">in use</span>}
+        <Button tone="quiet" className="p-1" title={`New table in ${schema}`} onClick={() => setCreating(true)}>
+          <Grid2x2Plus size={14} aria-hidden />
+          <span className="sr-only">New table</span>
+        </Button>
+        <Button
+          tone="quiet"
+          className="p-1"
+          title={`Diagram of ${schema}`}
           onClick={() =>
             openTab({ id: `er:${profile.id}:${schema}`, kind: 'er', title: `${schema} diagram`, profileId: profile.id, schema })
           }
         >
-          Diagram
-        </button>
+          <Network size={14} aria-hidden />
+          <span className="sr-only">Diagram</span>
+        </Button>
       </div>
       {error && <ErrorNote message={errorMessage(error)} />}
-      {(expanded || searching) && shown.map((object) => <ObjectRow key={object.name} object={object} profile={profile} />)}
+      {(expanded || searching) && (
+        <div className={`border-l border-line ${guide}`}>
+          {shown.map((object) => (
+            <ObjectRow key={object.name} object={object} profile={profile} />
+          ))}
+          {shown.length === 0 && <p className="py-1 pl-3 text-xs text-muted">{searching ? 'No match' : 'No tables'}</p>}
+        </div>
+      )}
       {creating && <CreateTableDialog profileId={profile.id} schema={schema} onClose={() => setCreating(false)} />}
     </div>
   );
@@ -139,7 +168,7 @@ function ConnectionNode({ profile, search, onEdit }: { profile: ConnectionProfil
     }
   };
 
-  const schemaNodes = (selectable: boolean) =>
+  const schemaNodes = (selectable: boolean, nested = false) =>
     session &&
     schemas.map((schema) => (
       <SchemaNode
@@ -150,6 +179,7 @@ function ConnectionNode({ profile, search, onEdit }: { profile: ConnectionProfil
         search={search}
         chosen={selectable && schema.name === current}
         onChoose={selectable ? () => void choose(schema.name) : undefined}
+        nested={nested}
       />
     ));
 
@@ -199,9 +229,10 @@ function ConnectionNode({ profile, search, onEdit }: { profile: ConnectionProfil
           aria-hidden
           className={session ? 'text-safe' : state === 'failed' ? 'text-danger' : 'text-muted'}
         />
-        <span className="min-w-0 flex-1 truncate text-sm font-bold">{profile.name}</span>
+        <span className="min-w-0 flex-1 truncate font-bold">{profile.name}</span>
+        {session && <span className="text-xs text-safe">Connected</span>}
         {state === 'connecting' && <span className="text-xs text-muted">Connecting</span>}
-        <span className="flex gap-1 opacity-0 focus-within:opacity-100 group-hover:opacity-100">
+        <span className="flex gap-0.5 opacity-0 focus-within:opacity-100 group-hover:opacity-100 [&>button]:rounded [&>button]:p-1 [&>button:hover]:bg-pick">
           {session ? (
             <button type="button" aria-label={`Disconnect ${profile.name}`} onClick={() => void disconnect()}>
               <Unplug size={14} />
@@ -221,12 +252,12 @@ function ConnectionNode({ profile, search, onEdit }: { profile: ConnectionProfil
       </div>
       {session && (
         <Button
-          className="ml-5"
+          className="mb-1 ml-5 py-0.5 text-xs"
           onClick={() =>
             openTab({ id: newId(), kind: 'sql', title: 'New query', profileId: profile.id, draftId: null, sql: '' })
           }
         >
-          New query
+          <Plus size={12} aria-hidden /> New query
         </Button>
       )}
       <div className="px-2">
@@ -236,19 +267,22 @@ function ConnectionNode({ profile, search, onEdit }: { profile: ConnectionProfil
       {separateDatabases && databases.length > 0
         ? databases.map((database) => (
             <div key={database}>
-              <button
-                type="button"
-                aria-current={database === current || undefined}
-                title={database === current ? undefined : 'Use this database'}
-                onClick={() => void choose(database)}
-                className={`flex w-full items-center gap-1 py-0.5 pl-3 text-left text-sm hover:bg-raised ${
-                  database === current ? 'font-bold' : ''
-                }`}
-              >
-                <Database size={13} aria-hidden className="shrink-0 text-muted" />
-                <span className="truncate">{database}</span>
-              </button>
-              {database === current && schemaNodes(false)}
+              <div className={`flex items-center pr-2 ${database === current ? 'here' : 'hover:bg-raised'}`}>
+                <button
+                  type="button"
+                  aria-current={database === current || undefined}
+                  title={database === current ? undefined : 'Use this database'}
+                  onClick={() => void choose(database)}
+                  className={`flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-3 text-left text-sm ${
+                    database === current ? 'font-bold' : ''
+                  }`}
+                >
+                  <Database size={13} aria-hidden className="shrink-0 text-muted" />
+                  <span className="truncate">{database}</span>
+                </button>
+                {database === current && <span className="shrink-0 text-xs text-muted">in use</span>}
+              </div>
+              {database === current && <div className="ml-5 border-l border-line">{schemaNodes(false, true)}</div>}
             </div>
           ))
         : schemaNodes(profile.engine === 'MySql')}

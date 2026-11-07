@@ -218,6 +218,19 @@ apply. Nothing has been committed; the human reviews and commits.
 - Open: `conformance` failed once at `execute.rs:59` (the 10,000-row read) during a full workspace run,
   then passed three full runs and three runs per driver. The message was not captured.
 
+## After hand-over: clearer interface
+- Colour still means risk only. Elements are told apart by three depth steps (ground, panel, raised),
+  a 3:1 `edge` outline on every control, and one mark for where you are: `.here`, an ink bar on the
+  `pick` background. It is used on the active tab, side icon, chosen database, selected rows and the
+  current result or view. Focus rings are ink, not green.
+- Theme colours accept opacity now (`border-line/40` and the like). Before, those classes produced no
+  CSS, so the grid's row dividers never showed.
+- Buttons have a `quiet` tone for toolbar extras. Schema row actions are icon buttons with labels for
+  screen readers. The table tab's Data/Structure switch is a segmented control and is no longer green.
+- `E2E_THEME=light` runs `core-flows.mjs` and `schema-and-databases.mjs` in the light theme.
+- Checked: dark and light screenshots of every screen the suites cover. E2E 39/39, 20/20 and 43/43 in
+  dark; 39/39 and 43/43 in light.
+
 ## Verification at hand-over
 - `cargo test --workspace` with every server up, including MySQL TLS: 250 passed, 0 failed, 0 skipped.
 - `npm test`: 34 passed. Clippy, fmt and `cargo deny check` clean.

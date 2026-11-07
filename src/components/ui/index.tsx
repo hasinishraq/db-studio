@@ -3,13 +3,15 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 
-type Tone = 'plain' | 'primary' | 'change' | 'danger';
+type Tone = 'plain' | 'quiet' | 'primary' | 'change' | 'danger';
 
+/** Every button has an edge, so it never reads as a label. `quiet` is for toolbar extras. */
 const TONES: Record<Tone, string> = {
-  plain: 'bg-raised text-ink hover:bg-line',
-  primary: 'bg-safe text-white hover:brightness-110',
-  change: 'bg-change text-black hover:brightness-110',
-  danger: 'bg-danger text-white hover:brightness-110',
+  plain: 'border-edge bg-raised text-ink hover:bg-pick',
+  quiet: 'border-transparent bg-transparent text-muted hover:border-edge hover:bg-raised hover:text-ink',
+  primary: 'border-transparent bg-safe font-bold text-[#08201b] hover:brightness-110',
+  change: 'border-transparent bg-change font-bold text-[#211500] hover:brightness-110',
+  danger: 'border-transparent bg-danger font-bold text-white hover:brightness-110',
 };
 
 export function Button({
@@ -21,7 +23,7 @@ export function Button({
     <button
       type="button"
       className={twMerge(
-        'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50',
+        'inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-sm disabled:cursor-not-allowed disabled:border-line disabled:opacity-40 disabled:hover:bg-raised',
         TONES[tone],
         className,
       )}
@@ -30,7 +32,8 @@ export function Button({
   );
 }
 
-const FIELD = 'w-full rounded border border-line bg-ground px-2 py-1 text-sm text-ink placeholder:text-muted';
+const FIELD =
+  'w-full rounded border border-edge bg-ground px-2 py-1 text-sm text-ink placeholder:text-muted disabled:opacity-40';
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={twMerge(FIELD, className)} {...props} />;
@@ -82,7 +85,7 @@ export function Modal({
 export function ErrorNote({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p role="alert" className="rounded border-l-4 border-danger bg-ground px-2 py-1 text-sm">
+    <p role="alert" className="border-l-4 border-danger bg-danger/10 px-2 py-1.5 text-sm">
       {message}
     </p>
   );

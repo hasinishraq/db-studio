@@ -240,8 +240,12 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
           ))}
         </Select>
         {tab.profileId && sessions[tab.profileId]?.database && (
-          <span className="text-sm font-bold" title="Queries run in this database">
-            {sessions[tab.profileId]?.database}
+          <span
+            className="flex items-center gap-1 rounded border border-line px-2 py-0.5 text-sm"
+            title="Queries run in this database"
+          >
+            <span className="text-muted">in</span>
+            <span className="font-bold">{sessions[tab.profileId]?.database}</span>
           </span>
         )}
         {runId ? (
@@ -275,7 +279,7 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
         <Panel defaultSize="45%" minSize="15%">
           <SqlEditor value={sql} onChange={setSql} onRun={() => void run()} columns={columns} handle={editor} />
         </Panel>
-        <Separator className="h-1 bg-line" />
+        <Separator aria-label="Resize editor" className="h-1.5 bg-line hover:bg-edge" />
         <Panel minSize="15%">
           <div className="flex h-full flex-col">
             {withRows.length > 1 && (
@@ -285,7 +289,7 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
                     key={index}
                     type="button"
                     onClick={() => setActive(position)}
-                    className={`px-2 py-1 text-sm ${position === active ? 'border-b-2 border-ink' : 'text-muted'}`}
+                    className={`px-3 py-1 text-sm ${position === active ? 'here-top bg-ground font-bold' : 'text-muted hover:text-ink'}`}
                   >
                     Result {position + 1}
                   </button>

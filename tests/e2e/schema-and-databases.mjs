@@ -106,6 +106,7 @@ const typeSql = async (sql) => {
 };
 
 await sleep(1500);
+if (process.env.E2E_THEME) await js(`document.documentElement.dataset.theme = ${JSON.stringify(process.env.E2E_THEME)}`);
 
 // Native file dialogs are answered through the app's own window handles.
 const APP = process.env.E2E_APP_PID;

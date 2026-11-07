@@ -172,7 +172,7 @@ export function ResultsGrid({
         </span>
         {selected.size > 0 && (
           <>
-            <span>{selected.size.toLocaleString()} selected</span>
+            <span className="font-bold">{selected.size.toLocaleString()} selected</span>
             <Button onClick={() => setSelected(new Set())}>Clear selection</Button>
           </>
         )}
@@ -199,12 +199,12 @@ export function ResultsGrid({
         aria-label="Query results"
         onKeyDown={onGridKey}
       >
-        <div style={{ width: fullWidth }} className="sticky top-0 z-10 flex border-b border-line bg-panel">
+        <div style={{ width: fullWidth }} className="sticky top-0 z-10 flex border-b-2 border-edge bg-panel">
           {statement.columns.map((column, index) => (
             <div key={`${column.name}${index}`} style={{ width: width(index) }} className="relative shrink-0 border-r border-line">
               <button
                 type="button"
-                className="w-full truncate px-2 text-left text-xs font-bold leading-6"
+                className="w-full truncate px-2 text-left text-xs font-bold leading-7 hover:bg-raised"
                 title={column.typeName}
                 onClick={() =>
                   setSort((s) =>
@@ -218,7 +218,7 @@ export function ResultsGrid({
               <span
                 aria-hidden
                 onPointerDown={(e) => startResize(index, e)}
-                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-line"
+                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-edge"
               />
             </div>
           ))}
@@ -230,8 +230,8 @@ export function ResultsGrid({
               role="row"
               aria-selected={selected.has(sourceIndex(item.index))}
               style={{ position: 'absolute', top: 0, transform: `translateY(${item.start}px)`, height: ROW_HEIGHT }}
-              className={`flex cursor-default select-none border-b border-line/40 ${
-                selected.has(sourceIndex(item.index)) ? 'bg-line' : 'hover:bg-raised'
+              className={`flex cursor-default select-none border-b border-line/50 ${
+                selected.has(sourceIndex(item.index)) ? 'here' : `hover:bg-raised ${item.index % 2 ? 'stripe' : ''}`
               }`}
               onClick={(event) => clickRow(item.index, event)}
             >

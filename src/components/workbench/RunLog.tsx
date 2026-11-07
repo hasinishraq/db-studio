@@ -73,7 +73,7 @@ export function WithLog({ log, children }: { log: ReturnType<typeof useRunLog>; 
       </Panel>
       {log.entries.length > 0 && (
         <>
-          <Separator aria-label="Resize log" className="h-1.5 bg-line hover:bg-muted" />
+          <Separator aria-label="Resize log" className="h-1.5 bg-line hover:bg-edge" />
           <Panel defaultSize="25%" minSize="8%">
             <RunLog entries={log.entries} onClear={log.clear} />
           </Panel>

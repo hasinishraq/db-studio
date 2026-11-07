@@ -203,7 +203,7 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionProf
             <Tabs.Trigger
               key={tab}
               value={tab}
-              className="px-3 py-1 text-sm data-[state=active]:border-b-2 data-[state=active]:border-ink"
+              className="px-3 py-1.5 text-sm text-muted hover:text-ink data-[state=active]:font-bold data-[state=active]:text-ink data-[state=active]:shadow-[inset_0_-2px_0_var(--ink)]"
             >
               {tab === 'general' ? 'General' : tab.toUpperCase()}
             </Tabs.Trigger>

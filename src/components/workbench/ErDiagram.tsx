@@ -313,14 +313,14 @@ export function ErDiagram({ tab }: { tab: ErTab }) {
           <Upload size={13} aria-hidden /> Import schema
         </Button>
         <span className="ml-auto flex items-center gap-1">
-          <Button aria-label="Zoom out" onClick={() => zoomBy(0.8)}>
+          <Button tone="quiet" aria-label="Zoom out" onClick={() => zoomBy(0.8)}>
             <Minus size={13} aria-hidden />
           </Button>
           <output className="w-12 text-center text-sm">{Math.round(zoom * 100)}%</output>
-          <Button aria-label="Zoom in" onClick={() => zoomBy(1.25)}>
+          <Button tone="quiet" aria-label="Zoom in" onClick={() => zoomBy(1.25)}>
             <Plus size={13} aria-hidden />
           </Button>
-          <Button onClick={() => setFitRequest((n) => n + 1)}>
+          <Button tone="quiet" onClick={() => setFitRequest((n) => n + 1)}>
             <Maximize size={13} aria-hidden /> Fit
           </Button>
         </span>

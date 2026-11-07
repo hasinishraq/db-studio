@@ -101,6 +101,7 @@ const typeSql = async (sql) => {
 };
 
 await sleep(1500);
+if (process.env.E2E_THEME) await js(`document.documentElement.dataset.theme = ${JSON.stringify(process.env.E2E_THEME)}`);
 await shot('01-empty');
 check('window renders', await until(() => js(`!!document.querySelector('[aria-label="Search tables"]')`)));
 check('no problems on load', problems.length === 0, problems.slice(0, 3).join(' | '));

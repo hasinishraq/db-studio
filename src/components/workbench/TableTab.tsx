@@ -305,12 +305,19 @@ export function TableTab({ tab }: { tab: TableTabData }) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-2 py-1">
-        <Button tone={view === 'data' ? 'primary' : 'plain'} onClick={() => setView('data')}>
-          Data
-        </Button>
-        <Button tone={view === 'structure' ? 'primary' : 'plain'} onClick={() => setView('structure')}>
-          Structure
-        </Button>
+        <div role="group" aria-label="View" className="flex overflow-hidden rounded border border-edge">
+          {(['data', 'structure'] as const).map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              aria-pressed={view === choice}
+              onClick={() => setView(choice)}
+              className={`px-3 py-1 text-sm ${view === choice ? 'here-top bg-pick font-bold' : 'bg-raised text-muted hover:text-ink'}`}
+            >
+              {choice === 'data' ? 'Data' : 'Structure'}
+            </button>
+          ))}
+        </div>
         {view === 'data' && (
           <>
             <Button onClick={() => setFiltering(true)}>Filter{filters.length ? ` (${filters.length})` : ''}</Button>
@@ -355,7 +362,7 @@ export function TableTab({ tab }: { tab: TableTabData }) {
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="border-collapse font-mono text-xs">
-            <thead className="sticky top-0 bg-panel">
+            <thead className="sticky top-0 z-10 bg-panel shadow-[inset_0_-2px_0_var(--edge)]">
               <tr>
                 <th className="border-b border-line" aria-label="Select" />
                 {columns.map((column) => (
@@ -377,7 +384,13 @@ export function TableTab({ tab }: { tab: TableTabData }) {
             </thead>
             <tbody>
               {rows.map((row, index) => (
-                <tr key={index} className="hover:bg-raised" onDoubleClick={() => setEditing({ row })}>
+                <tr
+                  key={index}
+                  aria-selected={selected.has(index)}
+                  title="Double-click to edit"
+                  className={selected.has(index) ? 'here' : `hover:bg-raised ${index % 2 ? 'stripe' : ''}`}
+                  onDoubleClick={() => setEditing({ row })}
+                >
                   <td className="border-b border-line/40 px-1">
                     <input
                       type="checkbox"
