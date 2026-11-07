@@ -77,4 +77,7 @@ it('sends a grid edit to Rust and confirms the SQL Rust planned', async () => {
   // Declined, so nothing may have been approved or run.
   expect(mocks.approveQuery).not.toHaveBeenCalled();
   expect(mocks.runQuery).not.toHaveBeenCalled();
+  // And the log under the data says so.
+  expect(await screen.findByText('Change not made: confirmation declined')).toBeInTheDocument();
+  expect(screen.getByLabelText('Run log')).toHaveTextContent(planned);
 });

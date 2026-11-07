@@ -195,6 +195,68 @@ await sleep(800);
 check('the declined DROP did not run', await until(() => has('1 rows')));
 check('table still has its rows', await js(`[...document.querySelectorAll('[aria-label="Query results"] div')].some(e => e.textContent === '2')`));
 
+// The grid stays after a write, with the log under it.
+await typeSql(`SELECT id, name FROM e2e_people ORDER BY id`);
+await js(`t.click('Run')`);
+await until(() => has('Ann'));
+await typeSql(`UPDATE e2e_people SET name = 'Anna' WHERE id = 1`);
+await js(`t.click('Run')`);
+await until(() => has('Review this change'));
+await js(`t.click('Run on E2E Postgres')`);
+check('an UPDATE is logged', await until(() => has('1 row affected')));
+const grid = () => js(`document.querySelector('[aria-label="Query results"]').innerText`);
+check('the table data stays on screen', (await grid()).includes('Ben'));
+check('the rows on screen are the ones from before', (await grid()).includes('Ann') && !(await grid()).includes('Anna'));
+check('it says the rows are from before the change', await has('loaded before your last change'));
+const order = await js(`(() => {
+  const log = document.querySelector('[aria-label="Run log"]').getBoundingClientRect();
+  const grid = document.querySelector('[aria-label="Query results"]').getBoundingClientRect();
+  return log.top >= grid.bottom - 1;
+})()`);
+check('the log sits below the table data', order);
+await shot('15-log-under-table');
+await js(`t.click('Refresh')`);
+check('Refresh shows the new value', await until(async () => (await grid()).includes('Anna')));
+check('the stale note goes away', await until(async () => !(await has('loaded before your last change'))));
+
+// Refresh repeats the read only, even when a write ran in the same go.
+await typeSql(`UPDATE e2e_people SET name = 'Cara' WHERE id = 2; SELECT id, name FROM e2e_people ORDER BY id`);
+await js(`t.click('Run')`);
+await until(() => has('Review this change'));
+await js(`t.click('Run on E2E Postgres')`);
+await until(async () => (await grid()).includes('Cara'));
+await typeSql(`UPDATE e2e_people SET name = 'Dana' WHERE id = 2`);
+await js(`t.click('Run')`);
+await until(() => has('Review this change'));
+await js(`t.click('Run on E2E Postgres')`);
+await until(() => has('loaded before your last change'));
+await js(`t.click('Refresh')`);
+check('Refresh after a mixed run shows the latest value', await until(async () => (await grid()).includes('Dana')));
+check('and it did not repeat the write', !(await has('Review this change')) && !(await grid()).includes('Cara'));
+
+// Zoom shortcuts, with the cursor in the editor.
+const press = async (key, code, vk, shift = false) => {
+  const modifiers = 2 | (shift ? 8 : 0);
+  await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, modifiers, windowsVirtualKeyCode: vk });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, modifiers, windowsVirtualKeyCode: vk });
+  await sleep(350);
+};
+await typeSql(`SELECT 1`);
+const width = () => js(`window.innerWidth`);
+const base = await width();
+await press('=', 'Equal', 187);
+const bigger = await width();
+check('Ctrl = makes everything bigger', bigger < base, `${base} to ${bigger}`);
+await press('+', 'Equal', 187, true);
+check('Ctrl + works too', (await width()) < bigger);
+await press('-', 'Minus', 189);
+await press('_', 'Minus', 189, true);
+check('Ctrl - and Ctrl _ make it smaller', Math.abs((await width()) - base) <= 2, String(await width()));
+await press('-', 'Minus', 189);
+check('it goes below normal', (await width()) > base);
+await press('0', 'Digit0', 48);
+check('Ctrl 0 resets', Math.abs((await width()) - base) <= 2);
+
 // A failing statement.
 await typeSql(`SELECT * FROM no_such_table_here`);
 await js(`t.click('Run')`);

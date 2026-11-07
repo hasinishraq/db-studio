@@ -5,8 +5,10 @@ import { clsx } from 'clsx';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Bot, Database, FileClock, History, Settings, ShieldCheck, X } from 'lucide-react';
 import { api } from '../../api';
+import { changeZoom, restoreZoom } from '../../api/zoom';
 import { events } from '../../bindings';
 import { newId, useStudio, type Tab } from '../../context/Studio';
+import { zoomAction } from '../../lib/zoom';
 import { AiTab } from '../ai/AiTab';
 import { AuditTab } from '../workbench/AuditTab';
 import { ErDiagram } from '../workbench/ErDiagram';
@@ -163,6 +165,20 @@ export function Shell() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // Capture phase, so the shortcut works with the cursor in the SQL editor too.
+  useEffect(() => {
+    restoreZoom();
+    const onKey = (event: KeyboardEvent) => {
+      const action = zoomAction(event);
+      if (!action) return;
+      event.preventDefault();
+      event.stopPropagation();
+      changeZoom(action);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
   useEffect(() => {
     const lost = events.connectionLost.listen((event) => {
       const entry = Object.entries(sessions).find(([, s]) => s.sessionId === event.payload.sessionId);
@@ -197,6 +213,9 @@ export function Shell() {
     { label: 'Open the assistant', run: openAi },
     { label: 'Open the audit log', run: openAudit },
     { label: 'Open settings', run: openSettings },
+    { label: 'Make everything bigger', run: () => changeZoom('in') },
+    { label: 'Make everything smaller', run: () => changeZoom('out') },
+    { label: 'Reset size', run: () => changeZoom('reset') },
   ];
 
   return (

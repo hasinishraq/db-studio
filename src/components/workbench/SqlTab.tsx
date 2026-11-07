@@ -7,9 +7,11 @@ import { runFlow } from '../../api/run';
 import type { ColumnInfo, ExportFormat, TxState } from '../../bindings';
 import { newId, useStudio, type Tab } from '../../context/Studio';
 import { ResultStore } from '../../lib/resultStore';
+import { charOffset, rowCount, spanText } from '../../lib/sqlText';
 import { Button, ErrorNote, Select } from '../ui';
 import { PlanView } from './PlanView';
 import { ResultsGrid } from './ResultsGrid';
+import { RunLog, useRunLog } from './RunLog';
 import { SqlEditor, type EditorHandle } from './SqlEditor';
 
 type SqlTabData = Extract<Tab, { kind: 'sql' }>;
@@ -71,18 +73,16 @@ function TransactionBar({ session }: { session: string }) {
   );
 }
 
-/** A byte offset into the text, from a 1-based character position the server reported. */
-function charOffset(text: string, bytes: number): number {
-  return new TextDecoder().decode(new TextEncoder().encode(text).slice(0, bytes)).length;
-}
-
 export function SqlTab({ tab }: { tab: SqlTabData }) {
   const { profiles, sessions, targetFor, confirm, updateTab } = useStudio();
   const client = useQueryClient();
   const [sql, setSql] = useState(tab.sql);
   const [store, setStore] = useState<ResultStore | null>(null);
   const [active, setActive] = useState(0);
-  const [log, setLog] = useState<string[]>([]);
+  const log = useRunLog();
+  // The last rows shown stay on screen when a later statement returns none.
+  const [kept, setKept] = useState<{ store: ResultStore; sql: string } | null>(null);
+  const [stale, setStale] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
@@ -111,11 +111,9 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
     return () => clearTimeout(timer);
   }, [sql, saved, draftId, tab.profileId, client]);
 
-  const addLog = (line: string) => setLog((lines) => [...lines, line]);
-
-  const run = async () => {
+  const run = async (override?: string) => {
     if (!target) return;
-    const text = editor.current?.selection() || sql;
+    const text = override ?? (editor.current?.selection() || sql);
     const next = new ResultStore();
     const id = newId();
     setStore(next);
@@ -127,15 +125,21 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
     try {
       const result = await runFlow({ target, sql: text, origin: 'Editor', confirm, runId: id, store: next });
       if (result.status === 'declined') {
-        addLog('Statement not run: confirmation declined');
+        log.add('info', 'Statement not run: confirmation declined', text.trim());
         return;
       }
       result.outcomes.forEach((outcome, index) => {
-        const span = result.verdicts[index]?.span;
-        if (outcome.kind === 'command') {
-          addLog(`${outcome.rowsAffected} rows affected in ${outcome.elapsedMs} ms`);
+        const verdict = result.verdicts[index];
+        const span = verdict?.span;
+        const statement = span ? spanText(text, span) : text;
+        if (outcome.kind === 'rows') {
+          const capped = outcome.truncated ? ', stopped at the limit' : '';
+          log.add('info', `${rowCount(outcome.totalRows)} returned in ${outcome.elapsedMs} ms${capped}`, statement);
+        } else if (outcome.kind === 'command') {
+          const tone = verdict?.readOnly ? 'info' : 'change';
+          log.add(tone, `${rowCount(outcome.rowsAffected)} affected in ${outcome.elapsedMs} ms`, statement);
         } else if (outcome.kind === 'error') {
-          addLog(outcome.error.message);
+          log.add('error', outcome.error.message, statement);
           setError(outcome.error.message);
           if (span) {
             const position = outcome.error.detail?.position;
@@ -144,13 +148,25 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
           }
         }
       });
+      if ([...next.statements.values()].some((s) => s.columns.length > 0)) {
+        // Refresh repeats only what Rust called a read, never a write that ran alongside it.
+        const reads = result.verdicts.filter((v) => v.readOnly).map((v) => spanText(text, v.span).replace(/;\s*$/, ''));
+        setKept({ store: next, sql: reads.join(';\n') });
+        setStale(false);
+      } else if (result.verdicts.some((v) => !v.readOnly)) {
+        setStale(true);
+      }
       // A structure change means the explorer and completion are out of date.
       if (result.verdicts.some((v) => v.kind === 'Ddl')) {
         void client.invalidateQueries({ queryKey: ['schema', tab.profileId] });
       }
       void client.invalidateQueries({ queryKey: ['history'] });
     } catch (e) {
-      setError(errorMessage(e));
+      if (e instanceof ApiError && e.code === 'Cancelled') log.add('info', 'Stopped', text.trim());
+      else {
+        log.add('error', errorMessage(e), text.trim());
+        setError(errorMessage(e));
+      }
     } finally {
       setRunId(null);
       window.dispatchEvent(new Event('studio:run-finished'));
@@ -176,7 +192,7 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
     setError(null);
     try {
       const rows = await api.exportQuery(session, editor.current?.selection() || sql, format, newId(), () => {});
-      addLog(`Exported ${rows.toLocaleString()} rows`);
+      log.add('info', `Exported ${rowCount(rows)}`);
     } catch (e) {
       if (!(e instanceof ApiError && e.code === 'Cancelled')) setError(errorMessage(e));
     }
@@ -192,8 +208,11 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
 
   // Rows keep arriving during a run, so this must re-read the store on every update.
   useSyncExternalStore(store?.subscribe ?? noSubscribe, store?.snapshot ?? noSnapshot);
-  const statements = store ? [...store.statements.entries()] : [];
-  const withRows = statements.filter(([, s]) => s.columns.length > 0);
+  const rowsOf = (from: ResultStore | null | undefined) =>
+    from ? [...from.statements.entries()].filter(([, s]) => s.columns.length > 0) : [];
+  const fresh = rowsOf(store);
+  const showing = fresh.length > 0 ? store : (kept?.store ?? null);
+  const withRows = fresh.length > 0 ? fresh : rowsOf(kept?.store);
   const current = withRows[active]?.[1] ?? withRows[0]?.[1];
 
   return (
@@ -261,24 +280,28 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
               </div>
             )}
             <ErrorNote message={error} />
+            {stale && current && (
+              <div className="flex items-center gap-2 border-b border-line px-2 py-1 text-sm">
+                <span className="text-muted">These rows were loaded before your last change.</span>
+                {kept?.sql && (
+                  <Button disabled={Boolean(runId)} onClick={() => void run(kept.sql)}>
+                    Refresh
+                  </Button>
+                )}
+              </div>
+            )}
             <div className="min-h-0 flex-1">
               {plan !== null ? (
                 <PlanView text={plan} />
-              ) : store && current ? (
-                <ResultsGrid store={store} statement={current} onStop={runId ? stop : undefined} />
+              ) : showing && current ? (
+                <ResultsGrid store={showing} statement={current} onStop={runId ? stop : undefined} />
               ) : (
                 <p className="p-3 text-sm text-muted">
                   {target ? 'Results appear here. Press Ctrl+Enter to run.' : 'Connect to a database to run this query.'}
                 </p>
               )}
             </div>
-            {log.length > 0 && (
-              <div className="max-h-24 overflow-auto border-t border-line px-2 py-1 font-mono text-xs text-muted">
-                {log.map((line, index) => (
-                  <div key={index}>{line}</div>
-                ))}
-              </div>
-            )}
+            <RunLog entries={log.entries} onClear={log.clear} />
           </div>
         </Panel>
       </Group>

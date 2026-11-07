@@ -5,8 +5,10 @@ import { runFlow } from '../../api/run';
 import type { CellValue, ColumnMeta, FilterOperator, FilterRule, RowChange, TableRef, TableStructure, Value } from '../../bindings';
 import { newId, useStudio, type Tab } from '../../context/Studio';
 import { cellText, ResultStore } from '../../lib/resultStore';
+import { rowCount } from '../../lib/sqlText';
 import { ImportWizard } from '../modals/ImportWizard';
 import { Button, ErrorNote, Field, Input, Modal, Select } from '../ui';
+import { RunLog, useRunLog } from './RunLog';
 
 type TableTabData = Extract<Tab, { kind: 'table' }>;
 
@@ -217,6 +219,7 @@ export function TableTab({ tab }: { tab: TableTabData }) {
   const [filtering, setFiltering] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const log = useRunLog();
   const table: TableRef = tab.table;
   const key = ['schema', tab.profileId, 'page', table, offset, filters, sort];
 
@@ -253,15 +256,26 @@ export function TableTab({ tab }: { tab: TableTabData }) {
         store: new ResultStore(),
         warnings: planned.warnings,
       });
-      if (result.status === 'finished') {
+      if (result.status === 'declined') {
+        log.add('info', 'Change not made: confirmation declined', planned.sql);
+      } else {
         const failed = result.outcomes.find((o) => o.kind === 'error');
-        if (failed?.kind === 'error') setError(failed.error.message);
+        if (failed?.kind === 'error') {
+          setError(failed.error.message);
+          log.add('error', failed.error.message, planned.sql);
+        }
+        for (const outcome of result.outcomes) {
+          if (outcome.kind === 'command') {
+            log.add('change', `${rowCount(outcome.rowsAffected)} affected in ${outcome.elapsedMs} ms`, planned.sql);
+          }
+        }
         setEditing(null);
         setSelected(new Set());
         void client.invalidateQueries({ queryKey: ['schema', tab.profileId] });
       }
     } catch (e) {
       setError(errorMessage(e));
+      log.add('error', errorMessage(e));
     }
   };
 
@@ -383,6 +397,7 @@ export function TableTab({ tab }: { tab: TableTabData }) {
           {rows.length === 0 && !page.isLoading && <p className="p-3 text-sm text-muted">No rows match.</p>}
         </div>
       )}
+      <RunLog entries={log.entries} onClear={log.clear} />
       {editing && (
         <RowEditor
           columns={columns}

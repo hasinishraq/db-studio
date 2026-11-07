@@ -3,6 +3,7 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { clsx } from 'clsx';
 import type { ConfirmRequest } from '../../api/run';
 import type { StatementVerdict } from '../../bindings';
+import { spanText } from '../../lib/sqlText';
 import { Button, Input } from '../ui';
 
 /** Friendly names for statement categories. */
@@ -81,7 +82,7 @@ export function ConfirmDialog({
   const highRisk = reasons.length > 0;
   const production = request.environment === 'Production';
   const guards = useGuards(highRisk, production, request.connectionName);
-  const statements = writes.map((verdict) => request.sql.slice(verdict.span.start, verdict.span.end));
+  const statements = writes.map((verdict) => spanText(request.sql, verdict.span));
 
   return (
     <AlertDialog.Root open>

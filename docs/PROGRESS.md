@@ -174,6 +174,20 @@ apply. Nothing has been committed; the human reviews and commits.
 - `rustls-pemfile`, the one flagged crate that was a direct dependency, was removed.
 - `cargo audit` was not run separately; `cargo deny` reads the same advisory database.
 
+## After hand-over: text size and run log
+- Ctrl + and Ctrl - (with or without Shift, so Ctrl _ too), Ctrl 0 to reset, the command palette and
+  Settings all change the size. It uses the webview's own zoom, because CSS zoom breaks Monaco's mouse
+  positions. This needs the `core:webview:allow-set-webview-zoom` permission, which is new. The level is
+  kept in localStorage.
+- SQL tabs and table tabs show a log under the data, one line per statement. It lasts as long as the tab.
+- A SQL tab keeps the last rows on screen after a statement that returns none, and says they are from
+  before the change. Refresh repeats only the statements Rust called read-only. Nothing re-runs by itself.
+- Fixed: the review dialog cut statements by byte position out of a JavaScript string, so text after
+  non-English characters showed the wrong slice of SQL. `spanText` in `src/lib/sqlText.ts` now does this.
+- E2E note: an installed copy that is open holds the shared WebView2 profile, and a second copy with a
+  debugging port then fails to start with 0x8007139F. Set `WEBVIEW2_USER_DATA_FOLDER` for test runs.
+- Checked: 250 Rust tests, 42 frontend tests, clippy and fmt clean, E2E 39/39 and 20/20.
+
 ## Verification at hand-over
 - `cargo test --workspace` with every server up, including MySQL TLS: 250 passed, 0 failed, 0 skipped.
 - `npm test`: 34 passed. Clippy, fmt and `cargo deny check` clean.

@@ -31,9 +31,12 @@ import { ConfirmDialog } from '../components/modals/ConfirmDialog';
 import { blankProfile, ConnectionDialog } from '../components/modals/ConnectionDialog';
 import { matches } from '../components/shell/Explorer';
 import { parsePlan } from '../components/workbench/PlanView';
+import { RunLog } from '../components/workbench/RunLog';
 import { chooseChart } from '../lib/chart';
 import { applyAiEvent, isSafeLink, saveConversation, type QueryPart, type TurnView } from '../lib/chat';
 import { cellText, ResultStore } from '../lib/resultStore';
+import { rowCount, spanText } from '../lib/sqlText';
+import { nextZoom, zoomAction } from '../lib/zoom';
 
 function wrap(ui: ReactNode) {
   return render(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
@@ -416,5 +419,79 @@ describe('explain plans', () => {
 
   it('returns nothing for text that is not a plan', () => {
     expect(parsePlan('not json')).toBeNull();
+  });
+});
+
+describe('zoom shortcuts', () => {
+  const press = (key: string, extra: Partial<KeyboardEvent> = {}) =>
+    zoomAction({ key, code: '', ctrlKey: true, metaKey: false, altKey: false, ...extra });
+
+  it('works like VS Code, with or without Shift', () => {
+    expect(press('=')).toBe('in');
+    expect(press('+')).toBe('in');
+    expect(press('-')).toBe('out');
+    expect(press('_')).toBe('out');
+    expect(press('0')).toBe('reset');
+    expect(press('', { code: 'NumpadAdd' })).toBe('in');
+    expect(press('', { code: 'NumpadSubtract' })).toBe('out');
+  });
+
+  it('leaves other keys and plain typing alone', () => {
+    expect(press('k')).toBeNull();
+    expect(press('-', { ctrlKey: false })).toBeNull();
+    expect(press('+', { altKey: true })).toBeNull();
+  });
+
+  it('steps through the levels and stops at the ends', () => {
+    expect(nextZoom(1, 'in')).toBe(1.1);
+    expect(nextZoom(1, 'out')).toBe(0.9);
+    expect(nextZoom(2, 'in')).toBe(2);
+    expect(nextZoom(0.5, 'out')).toBe(0.5);
+    expect(nextZoom(1.75, 'reset')).toBe(1);
+  });
+});
+
+describe('statement positions', () => {
+  it('cuts by bytes, so text before a statement cannot shift it', () => {
+    const sql = "SELECT 'বাংলা'; DELETE FROM t WHERE name = 'é'";
+    const start = new TextEncoder().encode("SELECT 'বাংলা'; ").length;
+    const end = new TextEncoder().encode(sql).length;
+    expect(spanText(sql, { start, end })).toBe("DELETE FROM t WHERE name = 'é'");
+  });
+
+  it('the review shows the exact statement after non-English text', () => {
+    const sql = "SELECT 'বাংলা'; DELETE FROM t";
+    const bytes = new TextEncoder().encode(sql).length;
+    const verdict = { ...write, span: { start: bytes - 'DELETE FROM t'.length, end: bytes } };
+    render(
+      <ConfirmDialog
+        request={{ sql, verdicts: [verdict], connectionName: 'main', environment: 'Development', warnings: [] }}
+        onSettle={() => {}}
+      />,
+    );
+    expect(screen.getByText('DELETE FROM t')).toBeInTheDocument();
+  });
+
+  it('says 1 row, not 1 rows', () => {
+    expect(rowCount(1)).toBe('1 row');
+    expect(rowCount(2)).toBe('2 rows');
+  });
+});
+
+describe('run log', () => {
+  const entry = (id: number, text: string) => ({ id, at: 0, tone: 'info' as const, text, sql: 'SELECT 1' });
+
+  it('shows nothing until something ran', () => {
+    render(<RunLog entries={[]} onClear={() => {}} />);
+    expect(screen.queryByLabelText('Run log')).toBeNull();
+  });
+
+  it('lists what ran and can be cleared', () => {
+    const clear = vi.fn();
+    render(<RunLog entries={[entry(1, '1 row affected in 6 ms')]} onClear={clear} />);
+    expect(screen.getByText('1 row affected in 6 ms')).toBeInTheDocument();
+    expect(screen.getByText('SELECT 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear log' }));
+    expect(clear).toHaveBeenCalledOnce();
   });
 });

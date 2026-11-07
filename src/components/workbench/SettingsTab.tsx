@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage } from '../../api';
+import { changeZoom, useZoom } from '../../api/zoom';
 import type { AiPolicy, AiProviderKind, MaskingRule, Settings, Theme } from '../../bindings';
 import { useStudio } from '../../context/Studio';
 import { applyTheme } from '../../lib/theme';
@@ -72,6 +73,7 @@ function MaskingEditor() {
 
 export function SettingsTab() {
   const client = useQueryClient();
+  const zoom = useZoom();
   const { data } = useQuery({ queryKey: ['settings'], queryFn: api.settingsGet });
   const [settings, setSettings] = useState<Settings | null>(null);
   const [apiKey, setApiKey] = useState('');
@@ -131,6 +133,19 @@ export function SettingsTab() {
             <option value="Light">Light</option>
           </Select>
         </Field>
+        <div className="text-sm">
+          <span className="mb-1 block text-muted">Text size (Ctrl + and Ctrl -)</span>
+          <div className="flex items-center gap-2">
+            <Button aria-label="Make everything smaller" onClick={() => changeZoom('out')}>
+              Smaller
+            </Button>
+            <output className="w-12 text-center">{Math.round(zoom * 100)}%</output>
+            <Button aria-label="Make everything bigger" onClick={() => changeZoom('in')}>
+              Bigger
+            </Button>
+            <Button onClick={() => changeZoom('reset')}>Reset</Button>
+          </div>
+        </div>
         <Field label="Runs kept in history">
           <Input type="number" value={settings.historyLimit} onChange={(e) => set({ historyLimit: Number(e.target.value) })} />
         </Field>

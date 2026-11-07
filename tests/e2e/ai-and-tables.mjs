@@ -201,6 +201,7 @@ const planned = await js(`document.querySelector('[role=alertdialog] pre').textC
 check('Rust planned safe SQL', planned.includes("'O''Brien'") && planned.includes(`"id" = '2'`), planned);
 await shot('12-grid-review');
 await js(`t.click('Run on E2E Postgres')`);
+check('the grid edit shows in the log under the data', await until(() => js(`[...document.querySelectorAll('[aria-label="Run log"]')].some((log) => log.offsetParent && log.innerText.includes('1 row affected'))`)));
 check('the edit reaches the grid', await until(() => has("O'Brien")));
 await shot('13-table');
 
