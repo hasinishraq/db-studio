@@ -1,5 +1,6 @@
 //! Connecting and disconnecting.
 
+use super::check_text;
 use crate::error::AppResult;
 use crate::state::AppState;
 use secrecy::SecretString;
@@ -7,6 +8,8 @@ use studio_session::SessionManager;
 use studio_store::{SecretKey, Store};
 use studio_types::{AppError, ConnectionProfile, ProfileId, ServerInfo, SessionId, SessionInfo};
 use tauri::State;
+
+const MAX_DATABASE_NAME: usize = 1024;
 
 /// Reads a profile's secrets. They go from the keychain straight to the session manager.
 async fn secrets_for(
@@ -53,6 +56,34 @@ pub async fn test_connection(
 #[specta::specta]
 pub async fn connect(state: State<'_, AppState>, profile_id: ProfileId) -> Result<SessionInfo, AppError> {
     open(&state.store, &state.sessions, profile_id).await
+}
+
+/// Lists the databases this connection can choose from.
+#[tauri::command]
+#[specta::specta]
+pub async fn list_databases(
+    state: State<'_, AppState>,
+    session_id: SessionId,
+) -> Result<Vec<String>, AppError> {
+    state.sessions.list_databases(session_id).await.app()
+}
+
+/// Chooses the default database. On PostgreSQL the returned session replaces this one.
+#[tauri::command]
+#[specta::specta]
+pub async fn use_database(
+    state: State<'_, AppState>,
+    session_id: SessionId,
+    database: String,
+) -> Result<SessionInfo, AppError> {
+    check_text("the database", &database, MAX_DATABASE_NAME)?;
+    let profile = state.sessions.get(session_id).app()?.profile.id;
+    let (password, ssh) = secrets_for(&state.store, profile).await?;
+    state
+        .sessions
+        .use_database(session_id, &database, password, ssh)
+        .await
+        .app()
 }
 
 /// Closes a session. `force` discards uncommitted work.

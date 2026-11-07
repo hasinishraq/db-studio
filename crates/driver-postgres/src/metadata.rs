@@ -36,6 +36,20 @@ fn column_from_row(row: &tokio_postgres::Row) -> Result<ColumnInfo, DbError> {
     })
 }
 
+pub(crate) async fn list_databases(session: &PgSession) -> Result<Vec<String>, DbError> {
+    let object = session.free().await?;
+    let rows = client(&object)
+        .query(
+            "SELECT datname::text FROM pg_catalog.pg_database
+             WHERE datallowconn AND NOT datistemplate AND has_database_privilege(datname, 'CONNECT')
+             ORDER BY 1",
+            &[],
+        )
+        .await
+        .map_err(map_error)?;
+    rows.iter().map(|r| r.try_get(0).map_err(map_error)).collect()
+}
+
 pub(crate) async fn list_schemas(session: &PgSession) -> Result<Vec<SchemaRef>, DbError> {
     let object = session.free().await?;
     let rows = client(&object)
@@ -134,7 +148,8 @@ async fn foreign_keys(client: &Client, table: &TableRef) -> Result<Vec<ForeignKe
                           ORDER BY x.ord),
                     ARRAY(SELECT a.attname::text FROM unnest(k.confkey) WITH ORDINALITY x(n, ord)
                           JOIN pg_catalog.pg_attribute a ON a.attrelid = k.confrelid AND a.attnum = x.n
-                          ORDER BY x.ord)
+                          ORDER BY x.ord),
+                    pg_catalog.pg_get_constraintdef(k.oid, true)
              FROM pg_catalog.pg_constraint k
              JOIN pg_catalog.pg_class c ON c.oid = k.conrelid
              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -153,6 +168,7 @@ async fn foreign_keys(client: &Client, table: &TableRef) -> Result<Vec<ForeignKe
                 referenced_table: r.try_get(2).map_err(map_error)?,
                 columns: r.try_get(3).map_err(map_error)?,
                 referenced_columns: r.try_get(4).map_err(map_error)?,
+                definition: r.try_get(5).map_err(map_error)?,
             })
         })
         .collect()

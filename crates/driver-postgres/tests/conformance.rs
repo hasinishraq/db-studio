@@ -229,3 +229,19 @@ async fn a_silent_server_times_out() {
     let outcome = result.expect("connect must give up by itself");
     assert!(matches!(outcome, Err(DbError::Connect(_))), "{:?}", outcome.err());
 }
+
+#[tokio::test]
+async fn a_blank_database_opens_postgres_and_lists_the_rest() {
+    let Some(url) = env("TEST_PG_URL") else { return };
+    let mut cfg = config(&url, TlsMode::Disable);
+    let database = std::mem::take(&mut cfg.database);
+    let session = PostgresDriver.connect(&cfg).await.unwrap();
+    let listed = session.list_databases().await.unwrap();
+    assert!(listed.contains(&database), "{listed:?}");
+    assert!(listed.iter().any(|name| name == "postgres"), "{listed:?}");
+    assert!(
+        !listed.iter().any(|name| name.starts_with("template")),
+        "{listed:?}"
+    );
+    session.close().await;
+}

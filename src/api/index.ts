@@ -4,8 +4,11 @@ import type {
   ConnectionProfile,
   ConversationId,
   Draft,
+  Engine,
   ExportFormat,
+  Value,
   FilterRule,
+  ColumnMeta,
   ImportMapping,
   MaskingRule,
   NewColumn,
@@ -76,10 +79,24 @@ export const api = {
     channel.onmessage = onRows;
     return unwrap(commands.exportQuery(session, sql, format, run, channel));
   },
-  exportTable: (session: SessionId, table: TableRef, format: ExportFormat, run: string, onRows: (rows: number) => void) => {
+  listDatabases: (session: SessionId) => unwrap(commands.listDatabases(session)),
+  switchDatabase: (session: SessionId, database: string) => unwrap(commands.useDatabase(session, database)),
+  exportSchema: (session: SessionId, schema: string) => unwrap(commands.exportSchema(session, schema)),
+  openSchemaFile: () => unwrap(commands.openSchemaFile()),
+  outlineSchema: (sql: string, engine: Engine) => unwrap(commands.outlineSchema(sql, engine)),
+  exportRows: (session: SessionId, columns: ColumnMeta[], rows: Value[][], format: ExportFormat, table: TableRef | null) =>
+    unwrap(commands.exportRows(session, columns, rows, format, table)),
+  exportTable: (
+    session: SessionId,
+    table: TableRef,
+    filters: FilterRule[],
+    format: ExportFormat,
+    run: string,
+    onRows: (rows: number) => void,
+  ) => {
     const channel = new Channel<number>();
     channel.onmessage = onRows;
-    return unwrap(commands.exportTable(session, table, format, run, channel));
+    return unwrap(commands.exportTable(session, table, filters, format, run, channel));
   },
   importPickFile: () => unwrap(commands.importPickFile()),
   importPlan: (session: SessionId, file: string, table: TableRef, mappings: ImportMapping[]) =>

@@ -10,8 +10,12 @@ use tauri::State;
 
 fn validate(profile: &ConnectionProfile) -> Result<(), AppError> {
     check_text("the name", &profile.name, 200)?;
-    check_text("the database", &profile.database, 4096)?;
-    if profile.engine != Engine::Sqlite {
+    if profile.database.len() > 4096 {
+        return Err(AppError::invalid("the database is too long"));
+    }
+    if profile.engine == Engine::Sqlite {
+        check_text("the database file", &profile.database, 4096)?;
+    } else {
         check_text("the host", &profile.host, 255)?;
         check_text("the user name", &profile.username, 255)?;
         if profile.port == 0 {

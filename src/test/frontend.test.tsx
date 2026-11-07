@@ -36,6 +36,7 @@ import { chooseChart } from '../lib/chart';
 import { applyAiEvent, isSafeLink, saveConversation, type QueryPart, type TurnView } from '../lib/chat';
 import { cellText, ResultStore } from '../lib/resultStore';
 import { rowCount, spanText } from '../lib/sqlText';
+import { arrange, BOX_WIDTH, edges, fit, tableHeight, zoomAt, type DiagramTable } from '../lib/diagram';
 import { nextZoom, zoomAction } from '../lib/zoom';
 
 function wrap(ui: ReactNode) {
@@ -493,5 +494,54 @@ describe('run log', () => {
     expect(screen.getByText('SELECT 1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Clear log' }));
     expect(clear).toHaveBeenCalledOnce();
+  });
+});
+
+describe('schema diagram', () => {
+  const box = (name: string, columns: string[], keys: DiagramTable['keys'] = []): DiagramTable => ({
+    name,
+    columns: columns.map((c) => ({ name: c, type: 'int', primaryKey: c === 'id' })),
+    keys,
+  });
+  const orders = box('orders', ['id', 'user_id'], [{ columns: ['user_id'], table: 'users', referencedColumns: ['id'] }]);
+  const users = box('users', ['id']);
+
+  it('draws every table and every column, however many', () => {
+    const many = Array.from({ length: 200 }, (_, i) => box(`t${i}`, Array.from({ length: 40 }, (_, c) => `c${c}`)));
+    const positions = arrange(many);
+    expect(Object.keys(positions)).toHaveLength(200);
+    expect(tableHeight(many[0] as DiagramTable)).toBeGreaterThan(40 * 20);
+  });
+
+  it('never stacks two tables on the same spot', () => {
+    const positions = arrange([orders, users, box('a', ['id']), box('b', ['id'])]);
+    const spots = Object.values(positions).map((p) => `${p.x},${p.y}`);
+    expect(new Set(spots).size).toBe(spots.length);
+  });
+
+  it('joins the two columns of a foreign key', () => {
+    const positions = { orders: { x: 0, y: 0 }, users: { x: 600, y: 100 } };
+    const [edge] = edges([orders, users], positions);
+    // user_id is the second column of orders; id is the first of users.
+    expect(edge?.path.startsWith(`M${BOX_WIDTH},58`)).toBe(true);
+    expect(edge?.path.endsWith('600,138')).toBe(true);
+  });
+
+  it('skips a key whose table is not on the diagram', () => {
+    expect(edges([orders], { orders: { x: 0, y: 0 } })).toEqual([]);
+  });
+
+  it('keeps the point under the cursor still when zooming', () => {
+    const before = { x: 10, y: 20, k: 1 };
+    const after = zoomAt(before, 2, { x: 110, y: 120 });
+    expect((110 - after.x) / after.k).toBeCloseTo((110 - before.x) / before.k);
+    expect(zoomAt({ x: 0, y: 0, k: 2 }, 10, { x: 0, y: 0 }).k).toBe(2);
+  });
+
+  it('fits a large schema without enlarging a small one', () => {
+    const positions = { users: { x: 0, y: 0 } };
+    expect(fit([users], positions, 1000, 800).k).toBe(1);
+    expect(fit([users], { users: { x: 5000, y: 0 } }, 1000, 800).k).toBeLessThan(0.2);
+    expect(fit([users], positions, 0, 0).k).toBe(1);
   });
 });

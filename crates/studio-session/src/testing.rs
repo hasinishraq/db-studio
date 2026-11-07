@@ -18,6 +18,8 @@ use tokio::sync::Notify;
 pub struct FakeLog {
     /// Each statement with the options and scope it ran under.
     pub executed: Vec<(String, ExecOptions, ConnScope)>,
+    /// Databases chosen with `use_database`.
+    pub used_databases: Vec<String>,
     /// Calls to `begin`.
     pub begins: u32,
     /// Calls to `commit`.
@@ -147,6 +149,15 @@ impl Session for FakeSession {
             tls_verified: false,
             certificates: vec![],
         })
+    }
+
+    async fn list_databases(&self) -> Result<Vec<String>, DbError> {
+        Ok(vec!["app".into(), "other".into()])
+    }
+
+    async fn use_database(&self, name: &str) -> Result<(), DbError> {
+        self.log.lock().unwrap().used_databases.push(name.to_owned());
+        Ok(())
     }
 
     async fn list_schemas(&self) -> Result<Vec<SchemaRef>, DbError> {
@@ -315,8 +326,12 @@ pub fn harness() -> Harness {
     let driver = FakeDriver::default();
     let audit = MemoryAudit::default();
     let approvals = Arc::new(ApprovalBook::new());
-    let drivers: HashMap<Engine, Arc<dyn Driver>> =
-        HashMap::from([(Engine::Postgres, Arc::new(driver.clone()) as Arc<dyn Driver>)]);
+    let fake = || Arc::new(driver.clone()) as Arc<dyn Driver>;
+    let drivers: HashMap<Engine, Arc<dyn Driver>> = HashMap::from([
+        (Engine::Postgres, fake()),
+        (Engine::MySql, fake()),
+        (Engine::Sqlite, fake()),
+    ]);
     let manager = SessionManager::new(drivers, approvals.clone(), Arc::new(audit.clone()));
     Harness {
         manager: Arc::new(manager),

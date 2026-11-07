@@ -123,8 +123,14 @@ async fn invalid_profiles_are_refused() {
             ..profile()
         },
         ConnectionProfile { port: 0, ..profile() },
+        // A SQLite profile is nothing without its file.
         ConnectionProfile {
+            engine: studio_types::Engine::Sqlite,
             database: String::new(),
+            ..profile()
+        },
+        ConnectionProfile {
+            database: "x".repeat(4097),
             ..profile()
         },
     ] {
@@ -132,6 +138,20 @@ async fn invalid_profiles_are_refused() {
             .await
             .expect_err("must be refused");
         assert_eq!(error.code, ErrorCode::InvalidInput);
+    }
+}
+
+#[tokio::test]
+async fn server_engines_may_leave_the_database_blank() {
+    let e = env().await;
+    for engine in [studio_types::Engine::Postgres, studio_types::Engine::MySql] {
+        let blank = ConnectionProfile {
+            id: studio_types::ProfileId::new(),
+            engine,
+            database: String::new(),
+            ..profile()
+        };
+        profiles::save(&e.store, blank, None).await.unwrap();
     }
 }
 

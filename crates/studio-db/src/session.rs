@@ -77,6 +77,16 @@ pub trait Conn: Send {
 pub trait Session: Send + Sync {
     /// Facts about the server.
     async fn server_info(&self) -> Result<ServerInfo, DbError>;
+    /// Lists the databases on the server. Empty when a connection only ever has one.
+    async fn list_databases(&self) -> Result<Vec<String>, DbError> {
+        Ok(Vec::new())
+    }
+    /// Makes a database the default for every later connection of this session.
+    async fn use_database(&self, _name: &str) -> Result<(), DbError> {
+        Err(DbError::Unsupported(
+            "this connection cannot change database".to_owned(),
+        ))
+    }
     /// Lists schemas.
     async fn list_schemas(&self) -> Result<Vec<SchemaRef>, DbError>;
     /// Lists tables and views in a schema.

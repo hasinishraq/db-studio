@@ -40,9 +40,26 @@ pub struct WhereClause {
     pub params: Vec<String>,
 }
 
-/// Turns filter rules into a WHERE clause. Values are always bound, never spliced into the SQL.
+/// A SQL string literal for one engine. The caller refuses NUL characters first.
+pub fn string_literal(engine: Engine, value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('\'');
+    for c in value.chars() {
+        match c {
+            '\'' => out.push_str("''"),
+            // Only MySQL treats a backslash as an escape inside a plain string.
+            '\\' if engine == Engine::MySql => out.push_str("\\\\"),
+            other => out.push(other),
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// Turns filter rules into a WHERE clause. Values are bound, unless [`Self::inline`] asks otherwise.
 pub struct FilterBuilder<'a> {
     engine: Engine,
+    inline: bool,
     /// PostgreSQL only: column name to catalog type, so a text parameter can be cast to it.
     casts: Option<&'a HashMap<String, String>>,
 }
@@ -54,12 +71,23 @@ const LIKE_ESCAPE: char = '!';
 impl<'a> FilterBuilder<'a> {
     /// A builder for one dialect.
     pub fn new(engine: Engine) -> Self {
-        Self { engine, casts: None }
+        Self {
+            engine,
+            inline: false,
+            casts: None,
+        }
     }
 
     /// Supplies PostgreSQL column types. Without one, a column compares as text.
     pub fn with_casts(mut self, casts: &'a HashMap<String, String>) -> Self {
         self.casts = Some(casts);
+        self
+    }
+
+    /// Writes values as escaped literals, for a single statement streamed as plain text. Only for
+    /// SQL that then goes through the safety checks as a read, such as an export.
+    pub fn inline(mut self) -> Self {
+        self.inline = true;
         self
     }
 
@@ -94,8 +122,7 @@ impl<'a> FilterBuilder<'a> {
                 return self.render_like(rule, &column, params)
             }
         };
-        params.push(rule.value.clone()?);
-        let placeholder = self.placeholder(params.len());
+        let placeholder = self.bind(rule.value.clone()?, params);
         Some(
             match (self.engine, self.casts.and_then(|c| c.get(&rule.column))) {
                 (Engine::Postgres, Some(pg_type)) => format!("{column} {op} {placeholder}::text::{pg_type}"),
@@ -107,12 +134,12 @@ impl<'a> FilterBuilder<'a> {
 
     fn render_like(&self, rule: &FilterRule, column: &str, params: &mut Vec<String>) -> Option<String> {
         let escaped = escape_like(rule.value.as_deref()?);
-        params.push(match rule.operator {
+        let pattern = match rule.operator {
             FilterOperator::StartsWith => format!("{escaped}%"),
             FilterOperator::EndsWith => format!("%{escaped}"),
             _ => format!("%{escaped}%"),
-        });
-        let placeholder = self.placeholder(params.len());
+        };
+        let placeholder = self.bind(pattern, params);
         Some(match self.engine {
             Engine::Postgres => {
                 format!("{column}::text ILIKE {placeholder}::text ESCAPE '{LIKE_ESCAPE}'")
@@ -120,6 +147,14 @@ impl<'a> FilterBuilder<'a> {
             Engine::MySql => format!("CAST({column} AS CHAR) LIKE {placeholder} ESCAPE '{LIKE_ESCAPE}'"),
             Engine::Sqlite => format!("CAST({column} AS TEXT) LIKE {placeholder} ESCAPE '{LIKE_ESCAPE}'"),
         })
+    }
+
+    fn bind(&self, value: String, params: &mut Vec<String>) -> String {
+        if self.inline {
+            return string_literal(self.engine, &value);
+        }
+        params.push(value);
+        self.placeholder(params.len())
     }
 
     fn placeholder(&self, index: usize) -> String {

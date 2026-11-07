@@ -460,3 +460,114 @@ mod at_scale {
         assert_eq!(written, 200_000);
     }
 }
+
+fn picked_columns() -> Vec<ColumnMeta> {
+    vec![
+        ColumnMeta {
+            name: "id".into(),
+            type_name: "int".into(),
+            nullable: None,
+        },
+        ColumnMeta {
+            name: "note".into(),
+            type_name: "text".into(),
+            nullable: None,
+        },
+    ]
+}
+
+#[test]
+fn picked_rows_export_only_those_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let rows = vec![vec![Value::Int(7), Value::Text("kept".into())]];
+    for (format, name) in [
+        (ExportFormat::Csv, "a.csv"),
+        (ExportFormat::JsonLines, "a.jsonl"),
+        (ExportFormat::SqlInserts, "a.sql"),
+    ] {
+        let path = dir.path().join(name);
+        let target = "\"t\"".to_owned();
+        let written = write_rows(format, &path, Engine::Postgres, target, picked_columns(), &rows).unwrap();
+        assert_eq!(written, 1);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("kept"), "{text}");
+        assert_eq!(text.matches("kept").count(), 1);
+    }
+    let path = dir.path().join("a.xlsx");
+    write_rows(
+        ExportFormat::Xlsx,
+        &path,
+        Engine::Postgres,
+        "t".into(),
+        picked_columns(),
+        &rows,
+    )
+    .unwrap();
+    assert!(std::fs::metadata(&path).unwrap().len() > 0);
+}
+
+#[test]
+fn picked_rows_must_fit_their_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("a.csv");
+    let short = vec![vec![Value::Int(1)]];
+    let write = |rows: &[Vec<Value>]| {
+        write_rows(
+            ExportFormat::Csv,
+            &path,
+            Engine::Sqlite,
+            "t".into(),
+            picked_columns(),
+            rows,
+        )
+    };
+    assert!(write(&short).is_err());
+    assert!(write(&[]).is_err());
+}
+
+#[test]
+fn sql_inserts_refuse_binary_the_grid_cut_short() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("a.sql");
+    let long = Value::bytes(&[7u8; 100]);
+    let rows = vec![vec![Value::Int(1), long]];
+    let result = write_rows(
+        ExportFormat::SqlInserts,
+        &path,
+        Engine::Sqlite,
+        "t".into(),
+        picked_columns(),
+        &rows,
+    );
+    assert!(result.is_err());
+    assert!(!path.exists());
+}
+
+#[test]
+fn a_filtered_table_export_is_one_safe_read() {
+    let table = TableRef {
+        schema: "public".into(),
+        name: "t".into(),
+    };
+    let rule = |value: &str| FilterRule {
+        column: "age".into(),
+        operator: studio_types::FilterOperator::Gt,
+        value: Some(value.into()),
+    };
+    let casts = HashMap::from([("age".to_owned(), "integer".to_owned())]);
+    let sql = table_select(Engine::Postgres, &table, &[rule("30")], &casts).unwrap();
+    assert_eq!(
+        sql,
+        r#"SELECT * FROM "public"."t" WHERE "age" > '30'::text::integer"#
+    );
+
+    // A hostile value stays inside its quotes, and the whole thing is still one read.
+    let sql = table_select(Engine::Postgres, &table, &[rule("1'; DROP TABLE t; --")], &casts).unwrap();
+    let classified = studio_safety::classify_script(&sql, Engine::Postgres);
+    assert_eq!(classified.len(), 1);
+    assert!(studio_safety::verdicts(&sql, Engine::Postgres)[0].read_only);
+
+    assert!(table_select(Engine::Postgres, &table, &[rule("a\0b")], &casts).is_err());
+    let plain = table_select(Engine::MySql, &table, &[], &HashMap::new()).unwrap();
+    assert_eq!(plain, "SELECT * FROM `public`.`t`");
+}

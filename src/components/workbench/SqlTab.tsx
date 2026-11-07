@@ -10,8 +10,8 @@ import { ResultStore } from '../../lib/resultStore';
 import { charOffset, rowCount, spanText } from '../../lib/sqlText';
 import { Button, ErrorNote, Select } from '../ui';
 import { PlanView } from './PlanView';
-import { ResultsGrid } from './ResultsGrid';
-import { RunLog, useRunLog } from './RunLog';
+import { ResultsGrid, type GridPick } from './ResultsGrid';
+import { useRunLog, WithLog } from './RunLog';
 import { SqlEditor, type EditorHandle } from './SqlEditor';
 
 type SqlTabData = Extract<Tab, { kind: 'sql' }>;
@@ -21,7 +21,7 @@ const noSnapshot = () => 0;
 
 function useSchemaColumns(session: string | undefined, profile: string | null): ColumnInfo[] {
   const { data = [] } = useQuery({
-    queryKey: ['schema', profile, 'columns'],
+    queryKey: ['schema', profile, 'columns', session],
     enabled: Boolean(session),
     queryFn: async () => {
       if (!session) return [];
@@ -89,6 +89,7 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
   const [draftId] = useState(tab.draftId ?? newId());
   const [saved, setSaved] = useState(tab.sql);
   const editor = useRef<EditorHandle | null>(null);
+  const gridPick = useRef<(() => GridPick | null) | null>(null);
   const session = tab.profileId ? sessions[tab.profileId]?.sessionId : undefined;
   const columns = useSchemaColumns(session, tab.profileId);
   const target = targetFor(tab.profileId);
@@ -191,8 +192,15 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
     if (!session) return;
     setError(null);
     try {
-      const rows = await api.exportQuery(session, editor.current?.selection() || sql, format, newId(), () => {});
-      log.add('info', `Exported ${rowCount(rows)}`);
+      // Rows narrowed in the grid export as they are; otherwise the query runs again in full.
+      const picked = gridPick.current?.();
+      if (picked) {
+        const rows = await api.exportRows(session, picked.columns, picked.rows, format, null);
+        log.add('info', `Exported ${rowCount(rows)} (${picked.kind})`);
+      } else {
+        const rows = await api.exportQuery(session, editor.current?.selection() || sql, format, newId(), () => {});
+        log.add('info', `Exported ${rowCount(rows)}`);
+      }
     } catch (e) {
       if (!(e instanceof ApiError && e.code === 'Cancelled')) setError(errorMessage(e));
     }
@@ -231,6 +239,11 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
             </option>
           ))}
         </Select>
+        {tab.profileId && sessions[tab.profileId]?.database && (
+          <span className="text-sm font-bold" title="Queries run in this database">
+            {sessions[tab.profileId]?.database}
+          </span>
+        )}
         {runId ? (
           <Button tone="danger" onClick={stop}>
             <Square size={13} aria-hidden /> Stop
@@ -290,18 +303,19 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
                 )}
               </div>
             )}
+            <WithLog log={log}>
             <div className="min-h-0 flex-1">
               {plan !== null ? (
                 <PlanView text={plan} />
               ) : showing && current ? (
-                <ResultsGrid store={showing} statement={current} onStop={runId ? stop : undefined} />
+                <ResultsGrid store={showing} statement={current} onStop={runId ? stop : undefined} pickRef={gridPick} />
               ) : (
                 <p className="p-3 text-sm text-muted">
                   {target ? 'Results appear here. Press Ctrl+Enter to run.' : 'Connect to a database to run this query.'}
                 </p>
               )}
             </div>
-            <RunLog entries={log.entries} onClear={log.clear} />
+            </WithLog>
           </div>
         </Panel>
       </Group>

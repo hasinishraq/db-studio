@@ -9,9 +9,11 @@ pub mod classify;
 pub mod dialect;
 pub mod functions;
 pub mod lexer;
+pub mod outline;
 pub mod risk;
 pub mod split;
 
 pub use approval::{sha256_hex, ApprovalBook, SafetyError};
 pub use classify::{ai_auto_allowed, classify_script, verdicts, ClassifiedStatement, Risk, Verdict};
 pub use lexer::has_executable_comment;
+pub use outline::schema_outline;

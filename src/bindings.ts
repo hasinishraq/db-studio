@@ -19,6 +19,10 @@ export const commands = {
 	testConnection: (profile: ConnectionProfile, password: string | null) => typedError<ServerInfo, AppError>(__TAURI_INVOKE("test_connection", { profile, password })),
 	/**  Opens a session. */
 	connect: (profileId: ProfileId) => typedError<SessionInfo, AppError>(__TAURI_INVOKE("connect", { profileId })),
+	/**  Lists the databases this connection can choose from. */
+	listDatabases: (sessionId: SessionId) => typedError<string[], AppError>(__TAURI_INVOKE("list_databases", { sessionId })),
+	/**  Chooses the default database. On PostgreSQL the returned session replaces this one. */
+	useDatabase: (sessionId: SessionId, database: string) => typedError<SessionInfo, AppError>(__TAURI_INVOKE("use_database", { sessionId, database })),
 	/**  Closes a session. `force` discards uncommitted work. */
 	disconnect: (sessionId: SessionId, force: boolean) => typedError<null, AppError>(__TAURI_INVOKE("disconnect", { sessionId, force })),
 	/**  Lists schemas. */
@@ -69,10 +73,21 @@ export const commands = {
 	planRowChange: (sessionId: SessionId, table: TableRef, change: RowChange) => typedError<PlannedSql, AppError>(__TAURI_INVOKE("plan_row_change", { sessionId, table, change })),
 	/**  Generates CREATE TABLE for the confirm flow. */
 	planCreateTable: (sessionId: SessionId, table: TableRef, columns: NewColumn[]) => typedError<PlannedSql, AppError>(__TAURI_INVOKE("plan_create_table", { sessionId, table, columns })),
+	/**  Writes a schema's structure to a file the user chooses, and says how many objects it held. */
+	exportSchema: (sessionId: SessionId, schema: string) => typedError<number, AppError>(__TAURI_INVOKE("export_schema", { sessionId, schema })),
+	/**  Asks for a script and returns its text. The path stays here, in Rust. */
+	openSchemaFile: () => typedError<SchemaFile, AppError>(__TAURI_INVOKE("open_schema_file")),
+	/**  The tables a script would create, for drawing. Nothing runs. */
+	outlineSchema: (sql: string, engine: Engine) => typedError<SchemaOutline, AppError>(__TAURI_INVOKE("outline_schema", { sql, engine })),
 	/**  Streams a query to a file the user chooses. */
 	exportQuery: (sessionId: SessionId, sql: string, format: ExportFormat, runId: RunId, onProgress: Channel<number>) => typedError<number, AppError>(__TAURI_INVOKE("export_query", { sessionId, sql, format, runId, onProgress })),
-	/**  Streams a whole table to a file the user chooses. */
-	exportTable: (sessionId: SessionId, table: TableRef, format: ExportFormat, runId: RunId, onProgress: Channel<number>) => typedError<number, AppError>(__TAURI_INVOKE("export_table", { sessionId, table, format, runId, onProgress })),
+	/**
+	 *  Writes the rows picked in a grid to a file the user chooses. No SQL runs, so masked values stay
+	 *  masked. `table` names the target of SQL inserts.
+	 */
+	exportRows: (sessionId: SessionId, columns: ColumnMeta[], rows: Value[][], format: ExportFormat, table: TableRef | null) => typedError<number, AppError>(__TAURI_INVOKE("export_rows", { sessionId, columns, rows, format, table })),
+	/**  Streams a table to a file the user chooses, honouring the grid's filters. */
+	exportTable: (sessionId: SessionId, table: TableRef, filters: FilterRule[], format: ExportFormat, runId: RunId, onProgress: Channel<number>) => typedError<number, AppError>(__TAURI_INVOKE("export_table", { sessionId, table, filters, format, runId, onProgress })),
 	/**  Asks the user for a CSV and previews it. */
 	importPickFile: () => typedError<ImportPreview, AppError>(__TAURI_INVOKE("import_pick_file")),
 	/**  Builds the text the user reviews, which `approve_query` then binds a token to. */
@@ -565,6 +580,8 @@ export type ForeignKeyInfo = {
 	referencedTable: string,
 	/**  Referenced columns. */
 	referencedColumns: string[],
+	/**  The server's own definition, when its table DDL leaves the key out. */
+	definition: string | null,
 };
 
 /**  One run in the history. */
@@ -699,6 +716,36 @@ export type Origin =
 /**  Proposed by the AI. */
 "Ai";
 
+/**  A column a script would create. */
+export type OutlineColumn = {
+	/**  Name. */
+	name: string,
+	/**  Type as written. */
+	dataType: string,
+	/**  Whether it is part of the primary key. */
+	primaryKey: boolean,
+};
+
+/**  A foreign key a script would create. */
+export type OutlineKey = {
+	/**  Local columns. */
+	columns: string[],
+	/**  Referenced table. */
+	referencedTable: string,
+	/**  Referenced columns. */
+	referencedColumns: string[],
+};
+
+/**  A table a script would create. */
+export type OutlineTable = {
+	/**  Name, without its schema. */
+	name: string,
+	/**  Columns. */
+	columns: OutlineColumn[],
+	/**  Foreign keys. */
+	foreignKeys: OutlineKey[],
+};
+
 /**  A page request for a table. */
 export type PageRequest = {
 	/**  Page size. */
@@ -792,6 +839,22 @@ outcome: StatementOutcome } |
 /**  One execution of a script. */
 export type RunId = string;
 
+/**  A script read from a file. The path stays in Rust. */
+export type SchemaFile = {
+	/**  File name, without its folder. */
+	name: string,
+	/**  The text. */
+	sql: string,
+};
+
+/**  What a script would create, read without running it. */
+export type SchemaOutline = {
+	/**  Tables, in script order. */
+	tables: OutlineTable[],
+	/**  Statements that could not be parsed. */
+	unread: number,
+};
+
 /**  A schema; a database on MySQL; `main` on SQLite. */
 export type SchemaRef = {
 	/**  Name. */
@@ -844,6 +907,8 @@ export type SessionInfo = {
 	engine: Engine,
 	/**  Server facts. */
 	server: ServerInfo,
+	/**  The database unqualified names resolve in, if one is chosen. */
+	database: string | null,
 };
 
 /**  All preferences. Unknown or missing fields fall back to defaults. */

@@ -74,6 +74,15 @@ pub(crate) fn client(object: &Object) -> &Client {
     object
 }
 
+/// The database to open. PostgreSQL always needs one, and `postgres` exists on nearly every server.
+fn database_name(cfg: &ConnectConfig) -> &str {
+    if cfg.database.is_empty() {
+        "postgres"
+    } else {
+        &cfg.database
+    }
+}
+
 fn build_config(cfg: &ConnectConfig) -> Config {
     let mut config = Config::new();
     // With a tunnel we dial 127.0.0.1 but verify the real name, which `host` carries.
@@ -87,7 +96,7 @@ fn build_config(cfg: &ConnectConfig) -> Config {
     }
     config
         .port(cfg.port)
-        .dbname(cfg.database.as_str())
+        .dbname(database_name(cfg))
         .user(cfg.username.as_str())
         .application_name(cfg.application_name.as_str())
         .connect_timeout(cfg.connect_timeout)
@@ -195,6 +204,10 @@ impl Session for PgSession {
             tls_verified: matches!(self.mode, TlsMode::VerifyCa | TlsMode::VerifyFull),
             certificates,
         })
+    }
+
+    async fn list_databases(&self) -> Result<Vec<String>, DbError> {
+        crate::metadata::list_databases(self).await
     }
 
     async fn list_schemas(&self) -> Result<Vec<SchemaRef>, DbError> {

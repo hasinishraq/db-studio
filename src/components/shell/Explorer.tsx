@@ -40,18 +40,22 @@ function SchemaNode({
   schema,
   profile,
   search,
+  chosen = false,
+  onChoose,
 }: {
   session: SessionId;
   schema: string;
   profile: ConnectionProfile;
   search: string;
+  chosen?: boolean;
+  onChoose?: () => void;
 }) {
   const { openTab } = useStudio();
   const [expanded, setExpanded] = useState(false);
   const [creating, setCreating] = useState(false);
   const searching = search.trim().length > 0;
   const { data: objects = [], error } = useQuery({
-    queryKey: ['schema', profile.id, 'objects', schema],
+    queryKey: ['schema', profile.id, 'objects', session, schema],
     queryFn: () => api.listObjects(session, { name: schema }),
     enabled: expanded || searching,
   });
@@ -63,11 +67,16 @@ function SchemaNode({
         <button
           type="button"
           aria-expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
+          aria-current={chosen || undefined}
+          title={onChoose && !chosen ? 'Use this database' : undefined}
+          onClick={() => {
+            setExpanded(onChoose && !chosen ? true : !expanded);
+            onChoose?.();
+          }}
           className="flex min-w-0 flex-1 items-center gap-1 py-0.5 pl-5 text-sm hover:bg-raised"
         >
           <Chevron size={13} aria-hidden />
-          <span className="truncate">{schema}</span>
+          <span className={`truncate ${chosen ? 'font-bold' : ''}`}>{schema}</span>
         </button>
         <button type="button" className="px-1 text-xs text-muted hover:text-ink" onClick={() => setCreating(true)}>
           New table
@@ -90,17 +99,59 @@ function SchemaNode({
 }
 
 function ConnectionNode({ profile, search, onEdit }: { profile: ConnectionProfile; search: string; onEdit: () => void }) {
-  const { sessions, setSession, openTab } = useStudio();
+  const { sessions, setSession, openTab, tabs, closeTab } = useStudio();
   const client = useQueryClient();
   const session = sessions[profile.id];
+  const current = session?.database ?? null;
+  const separateDatabases = profile.engine === 'Postgres';
   const [state, setState] = useState<'offline' | 'connecting' | 'failed'>('offline');
   const [error, setError] = useState<string | null>(null);
   const [hostKey, setHostKey] = useState<{ detail: HostKeyDetail; changed: boolean } | null>(null);
   const { data: schemas = [] } = useQuery({
-    queryKey: ['schema', profile.id, 'list'],
+    queryKey: ['schema', profile.id, 'list', session?.sessionId],
     queryFn: () => api.listSchemas(session?.sessionId ?? ''),
     enabled: Boolean(session),
   });
+  const { data: databases = [] } = useQuery({
+    queryKey: ['schema', profile.id, 'databases', session?.sessionId],
+    queryFn: () => api.listDatabases(session?.sessionId ?? ''),
+    enabled: Boolean(session) && separateDatabases,
+  });
+
+  const choose = async (database: string) => {
+    if (!session || database === current) return;
+    setError(null);
+    try {
+      const info = await api.switchDatabase(session.sessionId, database);
+      // These tabs name objects in the database just left.
+      if (separateDatabases) {
+        tabs
+          .filter((tab) => (tab.kind === 'table' || tab.kind === 'er') && tab.profileId === profile.id)
+          .forEach((tab) => closeTab(tab.id));
+      }
+      setSession(profile.id, info);
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.code === 'DirtyTransaction'
+          ? 'Commit or roll back first. Then change database.'
+          : errorMessage(e),
+      );
+    }
+  };
+
+  const schemaNodes = (selectable: boolean) =>
+    session &&
+    schemas.map((schema) => (
+      <SchemaNode
+        key={schema.name}
+        session={session.sessionId}
+        schema={schema.name}
+        profile={profile}
+        search={search}
+        chosen={selectable && schema.name === current}
+        onChoose={selectable ? () => void choose(schema.name) : undefined}
+      />
+    ));
 
   const connect = async () => {
     setState('connecting');
@@ -182,10 +233,25 @@ function ConnectionNode({ profile, search, onEdit }: { profile: ConnectionProfil
         <ErrorNote message={error} />
         {hostKey && <HostKeyPrompt {...hostKey} onTrust={() => void trust()} onCancel={() => setHostKey(null)} />}
       </div>
-      {session &&
-        schemas.map((schema) => (
-          <SchemaNode key={schema.name} session={session.sessionId} schema={schema.name} profile={profile} search={search} />
-        ))}
+      {separateDatabases && databases.length > 0
+        ? databases.map((database) => (
+            <div key={database}>
+              <button
+                type="button"
+                aria-current={database === current || undefined}
+                title={database === current ? undefined : 'Use this database'}
+                onClick={() => void choose(database)}
+                className={`flex w-full items-center gap-1 py-0.5 pl-3 text-left text-sm hover:bg-raised ${
+                  database === current ? 'font-bold' : ''
+                }`}
+              >
+                <Database size={13} aria-hidden className="shrink-0 text-muted" />
+                <span className="truncate">{database}</span>
+              </button>
+              {database === current && schemaNodes(false)}
+            </div>
+          ))
+        : schemaNodes(profile.engine === 'MySql')}
     </div>
   );
 }

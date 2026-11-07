@@ -33,6 +33,13 @@ pub(crate) struct RunHandle {
     canceller: Mutex<Option<Arc<dyn Canceller>>>,
 }
 
+impl RunHandle {
+    /// Whether this run belongs to the session.
+    pub(crate) fn is_on(&self, session: SessionId) -> bool {
+        self.session == session
+    }
+}
+
 /// Removes the run from the table on every exit path.
 struct RunGuard<'a> {
     manager: &'a SessionManager,

@@ -8,6 +8,7 @@ pub mod profiles;
 pub mod query;
 pub mod rows;
 pub mod schema;
+pub mod schema_io;
 pub mod secrets;
 pub mod sessions;
 pub mod settings;

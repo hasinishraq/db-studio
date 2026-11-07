@@ -5,8 +5,9 @@ use crate::tls::ssl_opts;
 use mysql_async::prelude::Queryable;
 use mysql_async::{Conn as RawConn, OptsBuilder, Pool, PoolConstraints, PoolOpts};
 use secrecy::ExposeSecret;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use studio_db::sql::quote_ident;
 use studio_db::{Conn, ConnScope, ConnectConfig, DbError, Driver, Session};
 use studio_types::{
     ColumnInfo, DbObject, Engine, FilterRule, PageRequest, SchemaRef, ServerInfo, TablePage, TableRef,
@@ -23,6 +24,7 @@ pub(crate) mod code {
     pub const MARIADB_STATEMENT_TIMEOUT: u16 = 1969;
     pub const MYSQL_EXECUTION_TIME_EXCEEDED: u16 = 3024;
     pub const NOT_PREPARABLE: u16 = 1295;
+    pub const UNKNOWN_DATABASE: u16 = 1049;
 }
 
 /// MySQL and MariaDB.
@@ -79,6 +81,10 @@ fn build_opts(cfg: &ConnectConfig) -> Result<OptsBuilder, DbError> {
         .ssl_opts(ssl_opts(&cfg.tls)?))
 }
 
+fn use_statement(name: &str) -> String {
+    format!("USE {}", quote_ident(Engine::MySql, name))
+}
+
 /// Facts shared by everything that runs on a session.
 pub(crate) struct Shared {
     pub pool: Pool,
@@ -86,15 +92,41 @@ pub(crate) struct Shared {
     /// Whether the profile keeps every connection read-only.
     pub read_only: bool,
     timeout: Duration,
+    /// The chosen database. The pool has many connections, so each one is pointed at it when taken.
+    default_database: RwLock<Option<String>>,
 }
 
 impl Shared {
     /// A free connection. Dialling has its own deadline because the library sets none.
     pub(crate) async fn get(&self) -> Result<RawConn, DbError> {
-        match tokio::time::timeout(self.timeout, self.pool.get_conn()).await {
-            Ok(result) => result.map_err(map_error),
-            Err(_) => Err(DbError::Connect("timed out connecting to the server".to_owned())),
+        let mut conn = match tokio::time::timeout(self.timeout, self.pool.get_conn()).await {
+            Ok(result) => result.map_err(map_error)?,
+            Err(_) => return Err(DbError::Connect("timed out connecting to the server".to_owned())),
+        };
+        let chosen = self.default_database.read().ok().and_then(|name| name.clone());
+        if let Some(name) = chosen {
+            match conn.query_drop(use_statement(&name)).await {
+                Ok(()) => {}
+                // It was dropped. The session must stay usable so the person can pick another.
+                Err(mysql_async::Error::Server(e)) if e.code == code::UNKNOWN_DATABASE => {
+                    if let Ok(mut slot) = self.default_database.write() {
+                        *slot = None;
+                    }
+                }
+                Err(error) => return Err(map_error(error)),
+            }
         }
+        Ok(conn)
+    }
+
+    /// Checks the database can be used, then remembers it.
+    async fn choose_database(&self, name: &str) -> Result<(), DbError> {
+        let mut conn = self.get().await?;
+        conn.query_drop(use_statement(name)).await.map_err(map_error)?;
+        if let Ok(mut slot) = self.default_database.write() {
+            *slot = Some(name.to_owned());
+        }
+        Ok(())
     }
 }
 
@@ -111,6 +143,7 @@ impl Driver for MySqlDriver {
             mariadb: false,
             read_only: cfg.read_only,
             timeout: cfg.connect_timeout,
+            default_database: RwLock::new(None),
         };
         let mut conn = shared.get().await?;
         let version: Option<String> = conn.query_first("SELECT VERSION()").await.map_err(map_error)?;
@@ -152,6 +185,15 @@ impl Session for MySession {
             tls_verified: matches!(self.mode, TlsMode::VerifyCa | TlsMode::VerifyFull),
             certificates: Vec::new(),
         })
+    }
+
+    async fn list_databases(&self) -> Result<Vec<String>, DbError> {
+        let schemas = self.list_schemas().await?;
+        Ok(schemas.into_iter().map(|schema| schema.name).collect())
+    }
+
+    async fn use_database(&self, name: &str) -> Result<(), DbError> {
+        self.shared.choose_database(name).await
     }
 
     async fn list_schemas(&self) -> Result<Vec<SchemaRef>, DbError> {

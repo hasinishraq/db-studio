@@ -246,7 +246,11 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionProf
                 </Field>
               </div>
               <Field label="Database">
-                <Input value={profile.database} onChange={(e) => set({ database: e.target.value })} />
+                <Input
+                  placeholder="Optional. Choose one after connecting"
+                  value={profile.database}
+                  onChange={(e) => set({ database: e.target.value })}
+                />
               </Field>
               <Field label="User">
                 <Input value={profile.username} onChange={(e) => set({ username: e.target.value })} />

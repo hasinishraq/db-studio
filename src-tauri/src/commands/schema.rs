@@ -19,7 +19,7 @@ fn check_table(table: &TableRef) -> Result<(), AppError> {
     check_text("the table", &table.name, MAX_NAME)
 }
 
-fn check_filters(filters: &[FilterRule]) -> Result<(), AppError> {
+pub(super) fn check_filters(filters: &[FilterRule]) -> Result<(), AppError> {
     if filters.len() > MAX_RULES {
         return Err(AppError::invalid("too many filters"));
     }

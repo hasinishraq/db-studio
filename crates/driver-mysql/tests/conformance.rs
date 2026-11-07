@@ -343,3 +343,41 @@ async fn require_encrypts_without_verifying() {
     let info = session.server_info().await.unwrap();
     assert!(info.tls && !info.tls_verified);
 }
+
+/// With no database in the connection, a chosen one reaches every pooled connection.
+#[tokio::test]
+async fn a_chosen_database_applies_to_every_connection() {
+    for url in urls() {
+        let mut cfg = config(&url);
+        let database = std::mem::take(&mut cfg.database);
+        let session = MySqlDriver.connect(&cfg).await.unwrap();
+
+        let listed = session.list_databases().await.unwrap();
+        assert!(listed.contains(&database), "{listed:?}");
+        assert!(!listed.iter().any(|name| name == "mysql" || name == "sys"));
+
+        session.use_database(&database).await.unwrap();
+        run(session.as_ref(), "DROP TABLE IF EXISTS studio_default_db").await;
+        run(session.as_ref(), "CREATE TABLE studio_default_db (id INT)").await;
+        // Several at once, so more than one pooled connection is in use.
+        let reads = (0..6).map(|_| run(session.as_ref(), "SELECT * FROM studio_default_db"));
+        futures_join(reads).await;
+        run(session.as_ref(), "DROP TABLE studio_default_db").await;
+
+        assert!(session.use_database("no_such_database_here").await.is_err());
+        session.close().await;
+    }
+}
+
+async fn futures_join<F: std::future::Future<Output = ()>>(futures: impl Iterator<Item = F>) {
+    let mut pinned: Vec<_> = futures.map(Box::pin).collect();
+    std::future::poll_fn(|context| {
+        pinned.retain_mut(|future| future.as_mut().poll(context).is_pending());
+        if pinned.is_empty() {
+            std::task::Poll::Ready(())
+        } else {
+            std::task::Poll::Pending
+        }
+    })
+    .await;
+}

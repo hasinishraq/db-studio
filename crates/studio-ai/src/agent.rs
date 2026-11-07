@@ -180,6 +180,9 @@ impl Engine {
         if !text.is_empty() {
             text.push_str(")\n");
         }
+        if let Some(database) = self.sessions.current_database(session).await {
+            text.insert_str(0, &format!("Current database: {database}\n"));
+        }
         (text, tables)
     }
 
@@ -408,7 +411,14 @@ impl Engine {
         let schema = match args.schema {
             Some(schema) => schema,
             None => match self.sessions.list_schemas(session).await {
-                Ok(schemas) => schemas.into_iter().next().map(|s| s.name).unwrap_or_default(),
+                Ok(schemas) => {
+                    let chosen = self.sessions.current_database(session).await;
+                    let chosen = schemas.iter().find(|s| Some(&s.name) == chosen.as_ref());
+                    chosen
+                        .or(schemas.first())
+                        .map(|s| s.name.clone())
+                        .unwrap_or_default()
+                }
                 Err(error) => return format!("Could not read the schema: {error}"),
             },
         };

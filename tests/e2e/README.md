@@ -24,3 +24,12 @@ Set `STUDIO_DATA_DIR` to a scratch folder so the run leaves your own connections
 debug builds only. The test connection's password still goes to the OS keychain, as
 `profile:<id>:password`, so remove that entry afterwards.
 
+## schema-and-databases.mjs
+
+Covers connecting without a database, the bold default, row export, the resizable log, and schema
+export, preview and apply. It needs PostgreSQL on port 54329 and MySQL on port 33069. Set `E2E_APP_PID`
+to the app's process id, because `file-dialog.ps1` answers that process's native file dialogs through
+their window handles and sends no keystrokes. Windows only.
+
+If an installed copy is open, set `WEBVIEW2_USER_DATA_FOLDER` to a scratch folder. Two copies with
+different launch flags cannot share a WebView2 profile, and the second fails with 0x8007139F.

@@ -227,7 +227,12 @@ export function Shell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-2 border-b border-line bg-panel px-3 py-1 text-sm">
           <strong>AI DB Studio</strong>
-          {activeProfile && <span className="text-muted">{activeProfile.name}</span>}
+          {activeProfile && (
+            <span className="text-muted">
+              {activeProfile.name}
+              {sessions[activeProfile.id]?.database ? `, ${sessions[activeProfile.id]?.database}` : ''}
+            </span>
+          )}
           {environment && environment !== 'Development' && (
             <span className={clsx('rounded px-1.5 text-xs font-bold text-white', BAND[environment])}>{environment}</span>
           )}

@@ -117,6 +117,7 @@ fn foreign_keys(conn: &Connection, table: &TableRef) -> Result<Vec<ForeignKeyInf
                     referenced_schema: table.schema.clone(),
                     referenced_table: target,
                     referenced_columns: Vec::new(),
+                    definition: None,
                 },
             ));
         }

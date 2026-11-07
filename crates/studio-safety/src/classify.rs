@@ -335,7 +335,7 @@ const CLASSIFIER_STACK: usize = 64 * 1024 * 1024;
 
 /// Runs `work` on its own large stack, so that a deep tree or a parser panic cannot take the process
 /// down. Every AST is created and dropped inside `work`. `None` means it failed: callers fail closed.
-fn isolated<T: Send>(work: impl FnOnce() -> T + Send) -> Option<T> {
+pub(crate) fn isolated<T: Send>(work: impl FnOnce() -> T + Send) -> Option<T> {
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .name("sql-classifier".to_owned())

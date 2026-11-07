@@ -15,18 +15,7 @@ pub fn literal(engine: Engine, value: &str) -> Result<String, AppError> {
     if value.contains('\0') {
         return Err(AppError::invalid("a value holds a NUL character"));
     }
-    let mut out = String::with_capacity(value.len() + 2);
-    out.push('\'');
-    for c in value.chars() {
-        match c {
-            '\'' => out.push_str("''"),
-            // Only MySQL treats a backslash as an escape inside a plain string.
-            '\\' if engine == Engine::MySql => out.push_str("\\\\"),
-            other => out.push(other),
-        }
-    }
-    out.push('\'');
-    Ok(out)
+    Ok(studio_db::sql::string_literal(engine, value))
 }
 
 fn rendered(engine: Engine, value: Option<&str>) -> Result<String, AppError> {

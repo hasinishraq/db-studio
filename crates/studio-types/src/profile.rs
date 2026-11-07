@@ -185,6 +185,8 @@ pub struct SessionInfo {
     pub engine: Engine,
     /// Server facts.
     pub server: ServerInfo,
+    /// The database unqualified names resolve in, if one is chosen.
+    pub database: Option<String>,
 }
 
 /// Which stored secret an IPC call refers to.

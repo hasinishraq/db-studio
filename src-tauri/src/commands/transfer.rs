@@ -2,18 +2,20 @@
 
 use super::check_sql;
 use super::rows::literal;
+use super::schema::check_filters;
 use crate::error::AppResult;
 use crate::state::AppState;
 use serde_json::{json, Map, Value as Json};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use studio_db::sql::{qualified, qualified_ref, quote_ident};
+use studio_db::sql::{qualified, qualified_ref, quote_ident, FilterBuilder};
 use studio_safety::sha256_hex;
 use studio_session::{RunOptions, SessionManager};
 use studio_types::{
-    AppError, ApprovalToken, ColumnMeta, Engine, ErrorCode, ExportFormat, ImportMapping, ImportPlan,
-    ImportPreview, RunEvent, RunId, SessionId, TableRef, Value,
+    AppError, ApprovalToken, ColumnMeta, Engine, ErrorCode, ExportFormat, FilterRule, ImportMapping,
+    ImportPlan, ImportPreview, RunEvent, RunId, SessionId, TableRef, Value,
 };
 use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
@@ -24,6 +26,9 @@ const PREVIEW_ROWS: usize = 100;
 const MAX_BATCH: u32 = 10_000;
 /// The most rows a worksheet holds, not counting the header.
 const XLSX_MAX_ROWS: u32 = 1_048_575;
+/// The most rows the webview may hand over at once. Larger results export from the database.
+const MAX_PICKED_ROWS: usize = 1_000_000;
+const MAX_PICKED_COLUMNS: usize = 4096;
 
 fn io_error(error: impl std::fmt::Display) -> AppError {
     AppError::new(ErrorCode::Internal, format!("file error: {error}"))
@@ -257,6 +262,69 @@ pub async fn export(
     Ok(written)
 }
 
+/// The read a table export runs, with the grid's filters written in as literals.
+pub fn table_select(
+    engine: Engine,
+    table: &TableRef,
+    filters: &[FilterRule],
+    casts: &HashMap<String, String>,
+) -> Result<String, AppError> {
+    if filters
+        .iter()
+        .any(|f| f.value.as_deref().is_some_and(|v| v.contains('\0')))
+    {
+        return Err(AppError::invalid("a filter holds a NUL character"));
+    }
+    let clause = FilterBuilder::new(engine)
+        .with_casts(casts)
+        .inline()
+        .build(filters);
+    Ok(format!(
+        "SELECT * FROM {}{}",
+        qualified_ref(engine, table),
+        clause.sql
+    ))
+}
+
+/// Refuses rows that do not fit their columns, or that could only be written incorrectly.
+fn check_picked(columns: &[ColumnMeta], rows: &[Vec<Value>], format: ExportFormat) -> Result<(), AppError> {
+    if columns.is_empty() || columns.len() > MAX_PICKED_COLUMNS {
+        return Err(AppError::invalid("the export has no usable columns"));
+    }
+    if rows.is_empty() || rows.len() > MAX_PICKED_ROWS {
+        return Err(AppError::invalid("export between 1 and 1,000,000 selected rows"));
+    }
+    if rows.iter().any(|row| row.len() != columns.len()) {
+        return Err(AppError::invalid("a row does not match its columns"));
+    }
+    let cut_short = |value: &Value| matches!(value, Value::Bytes { len, .. } if *len > 64);
+    if format == ExportFormat::SqlInserts && rows.iter().flatten().any(cut_short) {
+        return Err(AppError::invalid(
+            "the grid holds only the start of long binary values, so SQL inserts would lose data",
+        ));
+    }
+    Ok(())
+}
+
+/// Writes rows the person picked in a grid, exactly as the grid holds them.
+pub fn write_rows(
+    format: ExportFormat,
+    path: &Path,
+    engine: Engine,
+    target: String,
+    columns: Vec<ColumnMeta>,
+    rows: &[Vec<Value>],
+) -> Result<u64, AppError> {
+    check_picked(&columns, rows, format)?;
+    let mut exporter = Exporter::create(format, path, engine, target)?;
+    exporter.columns(columns)?;
+    for row in rows {
+        exporter.row(row)?;
+    }
+    exporter.finish()?;
+    Ok(rows.len() as u64)
+}
+
 fn pick_save(app: &AppHandle, format: ExportFormat) -> Result<PathBuf, AppError> {
     let (label, extension) = match format {
         ExportFormat::Csv => ("CSV", "csv"),
@@ -302,7 +370,30 @@ pub async fn export_query(
     .await
 }
 
-/// Streams a whole table to a file the user chooses.
+/// Writes the rows picked in a grid to a file the user chooses. No SQL runs, so masked values stay
+/// masked. `table` names the target of SQL inserts.
+#[tauri::command]
+#[specta::specta]
+pub async fn export_rows(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: SessionId,
+    columns: Vec<ColumnMeta>,
+    rows: Vec<Vec<Value>>,
+    format: ExportFormat,
+    table: Option<TableRef>,
+) -> Result<u64, AppError> {
+    let engine = state.sessions.get(session_id).app()?.engine();
+    check_picked(&columns, &rows, format)?;
+    let target = table.map_or_else(|| "exported".to_owned(), |t| qualified_ref(engine, &t));
+    let path = pick_save(&app, format)?;
+    tokio::task::spawn_blocking(move || write_rows(format, &path, engine, target, columns, &rows))
+        .await
+        .map_err(io_error)?
+}
+
+/// Streams a table to a file the user chooses, honouring the grid's filters.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub async fn export_table(
@@ -310,14 +401,22 @@ pub async fn export_table(
     state: State<'_, AppState>,
     session_id: SessionId,
     table: TableRef,
+    filters: Vec<FilterRule>,
     format: ExportFormat,
     run_id: RunId,
     on_progress: Channel<u64>,
 ) -> Result<u64, AppError> {
     let open = state.sessions.get(session_id).app()?;
     let target = qualified_ref(open.engine(), &table);
+    check_filters(&filters)?;
+    // Filters compare by column type on PostgreSQL.
+    let mut casts = HashMap::new();
+    if !filters.is_empty() {
+        let structure = state.sessions.table_structure(session_id, &table).await.app()?;
+        casts.extend(structure.columns.into_iter().map(|c| (c.name, c.data_type)));
+    }
+    let sql = table_select(open.engine(), &table, &filters, &casts)?;
     let path = pick_save(&app, format)?;
-    let sql = format!("SELECT * FROM {target}");
     let progress = move |rows: u64| {
         let _ = on_progress.send(rows);
     };

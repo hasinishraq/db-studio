@@ -188,6 +188,36 @@ apply. Nothing has been committed; the human reviews and commits.
   debugging port then fails to start with 0x8007139F. Set `WEBVIEW2_USER_DATA_FOLDER` for test runs.
 - Checked: 250 Rust tests, 42 frontend tests, clippy and fmt clean, E2E 39/39 and 20/20.
 
+## After hand-over: rows, databases and schema files
+- The log under the data is a resizable panel in SQL, table and diagram tabs.
+- Query results have row selection (click, Ctrl, Shift, Ctrl+A, Esc). Export writes the selected rows,
+  or the filtered rows, or else the whole result. `export_rows` writes what the grid holds, so masked
+  values stay masked, and it refuses SQL inserts when a binary value was cut short in the grid.
+- A table tab's Export honours selected rows and filters. Before, it wrote the whole table. Filters are
+  written as literals (`FilterBuilder::inline`) because the export streams one statement; that SQL
+  still goes through the classifier as a read. A table tab's selection now clears with the page.
+- The database field is optional on MySQL and PostgreSQL. `use_database` chooses the default, shown
+  bold, and refuses unknown names, open transactions and, on PostgreSQL, a running query. MySQL points
+  each pooled connection at it when taken. PostgreSQL opens a new session and only then closes the old
+  one, and its table and diagram tabs close because they name objects in the old database. A blank
+  PostgreSQL database opens `postgres`. The choice lasts for the session and is not saved in the profile.
+- The diagram tab holds schema export and import. Export writes tables in dependency order, then
+  PostgreSQL foreign keys, then views. `ForeignKeyInfo.definition` is new because the rebuilt PostgreSQL
+  DDL has no foreign keys. Not exported: types, triggers, functions. A PostgreSQL column of a custom
+  type therefore fails on import. MySQL foreign key cycles cannot be ordered and need
+  `SET FOREIGN_KEY_CHECKS=0` by hand.
+- Import reads a file of at most 1 MB (the SQL limit) in Rust, draws it with
+  `studio_safety::schema_outline` without running it, and applies it only through the normal review.
+  A failed statement leaves earlier ones applied, and the review says so.
+- The diagram has no table or column limit, with pan, zoom, drag and column-to-column lines. Positions
+  are not saved.
+- `tests/e2e/schema-and-databases.mjs` drives real file dialogs with `file-dialog.ps1`, on Windows only.
+- Checked: 275 Rust tests with every server up, 48 frontend tests, clippy, fmt and `cargo deny` clean,
+  E2E 39/39, 20/20 and 43/43. The PostgreSQL and SQLite exports were rebuilt from their own scripts.
+  MySQL was tested for ordering only, not rebuilt.
+- Open: `conformance` failed once at `execute.rs:59` (the 10,000-row read) during a full workspace run,
+  then passed three full runs and three runs per driver. The message was not captured.
+
 ## Verification at hand-over
 - `cargo test --workspace` with every server up, including MySQL TLS: 250 passed, 0 failed, 0 skipped.
 - `npm test`: 34 passed. Clippy, fmt and `cargo deny check` clean.

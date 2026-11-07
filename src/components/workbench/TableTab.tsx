@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage } from '../../api';
 import { runFlow } from '../../api/run';
-import type { CellValue, ColumnMeta, FilterOperator, FilterRule, RowChange, TableRef, TableStructure, Value } from '../../bindings';
+import type { CellValue, ColumnMeta, ExportFormat, FilterOperator, FilterRule, RowChange, TableRef, TableStructure, Value } from '../../bindings';
 import { newId, useStudio, type Tab } from '../../context/Studio';
 import { cellText, ResultStore } from '../../lib/resultStore';
 import { rowCount } from '../../lib/sqlText';
 import { ImportWizard } from '../modals/ImportWizard';
 import { Button, ErrorNote, Field, Input, Modal, Select } from '../ui';
-import { RunLog, useRunLog } from './RunLog';
+import { useRunLog, WithLog } from './RunLog';
 
 type TableTabData = Extract<Tab, { kind: 'table' }>;
 
@@ -223,6 +223,9 @@ export function TableTab({ tab }: { tab: TableTabData }) {
   const table: TableRef = tab.table;
   const key = ['schema', tab.profileId, 'page', table, offset, filters, sort];
 
+  // The selection is by position on the page, so it ends when the page changes.
+  useEffect(() => setSelected(new Set()), [offset, filters, sort]);
+
   const page = useQuery({
     queryKey: key,
     enabled: Boolean(session),
@@ -285,8 +288,15 @@ export function TableTab({ tab }: { tab: TableTabData }) {
 
   const exportTable = async (format: string) => {
     if (!session || !format) return;
+    setError(null);
     try {
-      await api.exportTable(session, table, format as 'Csv', newId(), () => {});
+      const picked = [...selected].sort((a, b) => a - b).flatMap((i) => (rows[i] ? [rows[i]] : []));
+      const written =
+        picked.length > 0
+          ? await api.exportRows(session, columns, picked, format as ExportFormat, table)
+          : await api.exportTable(session, table, filters, format as ExportFormat, newId(), () => {});
+      const scope = picked.length > 0 ? ' (selected)' : filters.length > 0 ? ' (filtered)' : '';
+      log.add('info', `Exported ${rowCount(written)}${scope}`);
     } catch (e) {
       if (!(e instanceof ApiError && e.code === 'Cancelled')) setError(errorMessage(e));
     }
@@ -318,7 +328,7 @@ export function TableTab({ tab }: { tab: TableTabData }) {
             </Button>
             <Button onClick={() => setImporting(true)}>Import CSV</Button>
             <Select aria-label="Export table" className="w-28" value="" onChange={(e) => void exportTable(e.target.value)}>
-              <option value="">Export</option>
+              <option value="">{selected.size > 0 ? `Export ${selected.size}` : 'Export'}</option>
               <option value="Csv">CSV</option>
               <option value="JsonLines">JSON lines</option>
               <option value="Xlsx">Excel</option>
@@ -337,6 +347,7 @@ export function TableTab({ tab }: { tab: TableTabData }) {
         )}
       </div>
       <ErrorNote message={error ?? (page.error ? errorMessage(page.error) : null)} />
+      <WithLog log={log}>
       {view === 'structure' ? (
         structure.data ? (
           <StructureView structure={structure.data} />
@@ -397,7 +408,7 @@ export function TableTab({ tab }: { tab: TableTabData }) {
           {rows.length === 0 && !page.isLoading && <p className="p-3 text-sm text-muted">No rows match.</p>}
         </div>
       )}
-      <RunLog entries={log.entries} onClear={log.clear} />
+      </WithLog>
       {editing && (
         <RowEditor
           columns={columns}

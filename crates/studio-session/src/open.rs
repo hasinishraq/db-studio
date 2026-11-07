@@ -6,7 +6,7 @@ use secrecy::SecretString;
 use std::any::Any;
 use std::sync::Arc;
 use studio_db::{ConnectConfig, Session, TlsConfig};
-use studio_types::{ConnectionProfile, Engine, ServerInfo, SessionId, SessionInfo, TxState};
+use studio_types::{ConnectionProfile, Engine, ServerInfo, SessionId, SessionInfo, TxMode, TxState};
 use tokio::sync::Mutex;
 
 /// An established route to a database, such as an SSH tunnel.
@@ -40,6 +40,7 @@ pub struct OpenSession {
     /// What the profile allows.
     pub policy: SessionPolicy,
     pub(crate) tx: Mutex<TxState>,
+    pub(crate) database: Mutex<Option<String>>,
     /// Keeps a tunnel alive for as long as the session.
     _route: Option<Route>,
 }
@@ -48,6 +49,16 @@ impl OpenSession {
     /// The engine, which is also the SQL dialect.
     pub fn engine(&self) -> Engine {
         self.profile.engine
+    }
+}
+
+/// The database a new session starts in.
+fn starting_database(profile: &ConnectionProfile) -> Option<String> {
+    let named = (!profile.database.is_empty()).then(|| profile.database.clone());
+    match profile.engine {
+        Engine::Sqlite => None,
+        Engine::MySql => named,
+        Engine::Postgres => named.or_else(|| Some("postgres".to_owned())),
     }
 }
 
@@ -105,11 +116,13 @@ impl SessionManager {
         let id = SessionId::new();
         let (session, route) = self.open(&profile, password, ssh_secret, id).await?;
         let server = session.server_info().await?;
+        let database = starting_database(&profile);
         let info = SessionInfo {
             session_id: id,
             profile_id: profile.id,
             engine: profile.engine,
             server,
+            database: database.clone(),
         };
         let policy = SessionPolicy::of(&profile);
         let open = OpenSession {
@@ -118,6 +131,7 @@ impl SessionManager {
             session,
             policy,
             tx: Mutex::new(TxState::default()),
+            database: Mutex::new(database),
             _route: route,
         };
         self.sessions.insert(id, Arc::new(open));
@@ -136,6 +150,70 @@ impl SessionManager {
         session.close().await;
         drop(route);
         Ok(info?)
+    }
+
+    /// Lists the databases a session can choose from.
+    pub async fn list_databases(&self, id: SessionId) -> Result<Vec<String>, SessionError> {
+        Ok(self.get(id)?.session.list_databases().await?)
+    }
+
+    /// The session's chosen database.
+    pub async fn current_database(&self, id: SessionId) -> Option<String> {
+        self.get(id).ok()?.database.lock().await.clone()
+    }
+
+    /// Chooses the default database. MySQL changes it in place. A PostgreSQL connection is tied to
+    /// one database, so that opens a new session first and closes this one only once it works.
+    pub async fn use_database(
+        &self,
+        id: SessionId,
+        name: &str,
+        password: Option<SecretString>,
+        ssh_secret: Option<SecretString>,
+    ) -> Result<SessionInfo, SessionError> {
+        let open = self.get(id)?;
+        let engine = open.engine();
+        if engine == Engine::Sqlite {
+            return Err(SessionError::Refused(
+                "a SQLite connection has one database".to_owned(),
+            ));
+        }
+        let tx = *open.tx.lock().await;
+        if tx.dirty || tx.mode == TxMode::Manual {
+            return Err(SessionError::DirtyTransaction);
+        }
+        if !open
+            .session
+            .list_databases()
+            .await?
+            .iter()
+            .any(|known| known == name)
+        {
+            return Err(SessionError::Refused(format!(
+                "there is no database named {name}"
+            )));
+        }
+        if engine == Engine::Postgres {
+            if self.runs.iter().any(|run| run.is_on(id)) {
+                return Err(SessionError::Refused(
+                    "stop the running query before changing database".to_owned(),
+                ));
+            }
+            let mut profile = open.profile.clone();
+            profile.database = name.to_owned();
+            let info = self.connect(profile, password, ssh_secret).await?;
+            self.disconnect(id, true).await?;
+            return Ok(info);
+        }
+        open.session.use_database(name).await?;
+        *open.database.lock().await = Some(name.to_owned());
+        Ok(SessionInfo {
+            session_id: id,
+            profile_id: open.profile.id,
+            engine,
+            server: open.session.server_info().await?,
+            database: Some(name.to_owned()),
+        })
     }
 
     /// Closes a session. With uncommitted work this fails unless `force`, which rolls it back.

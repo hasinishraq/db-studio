@@ -134,6 +134,7 @@ async fn foreign_keys(conn: &mut Conn, table: &TableRef) -> Result<Vec<ForeignKe
             referenced_schema,
             referenced_table,
             referenced_columns: Vec::new(),
+            definition: None,
         });
         entry.columns.push(text(row, 1)?);
         entry.referenced_columns.push(text(row, 4)?);
