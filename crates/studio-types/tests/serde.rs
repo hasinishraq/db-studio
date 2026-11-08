@@ -35,6 +35,7 @@ fn profile() -> ConnectionProfile {
         read_only: true,
         ai_policy: AiPolicy::LocalOnly,
         color: None,
+        default_schema: None,
         has_password: true,
     }
 }

@@ -127,6 +127,7 @@ fn legacy_profile(value: &Json, notes: &mut Vec<String>) -> Option<ConnectionPro
         read_only: value.get("readOnly").and_then(Json::as_bool).unwrap_or(false),
         ai_policy: AiPolicy::Default,
         color: string(value, &["color"]),
+        default_schema: None,
         has_password: false,
     })
 }

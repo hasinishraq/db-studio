@@ -1,16 +1,20 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   tablePage: vi.fn(),
   tableCount: vi.fn(),
   tableStructure: vi.fn(),
+  gridEditInfo: vi.fn(),
   planRowChange: vi.fn(),
+  planRowChanges: vi.fn(),
+  runRowChanges: vi.fn(),
   prepareQuery: vi.fn(),
   approveQuery: vi.fn(),
   runQuery: vi.fn(),
   confirm: vi.fn(),
+  setUnsaved: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -24,8 +28,10 @@ vi.mock('../context/Studio', () => ({
   newId: () => 'id',
   useStudio: () => ({
     sessions: { p1: { sessionId: 's1' } },
+    profiles: [{ id: 'p1', readOnly: false }],
     targetFor: () => ({ session: 's1', connectionName: 'main', environment: 'Development' }),
     confirm: mocks.confirm,
+    setUnsaved: mocks.setUnsaved,
   }),
 }));
 
@@ -33,51 +39,144 @@ import { TableTab } from '../components/workbench/TableTab';
 
 const ok = <T,>(data: T) => Promise.resolve({ status: 'ok' as const, data });
 
-it('sends a grid edit to Rust and confirms the SQL Rust planned', async () => {
-  const columns = [
-    { name: 'id', typeName: 'int4', nullable: null },
-    { name: 'name', typeName: 'text', nullable: null },
-  ];
-  mocks.tablePage.mockReturnValue(ok({ columns, rows: [[{ t: 'Int', v: 1 }, { t: 'Text', v: 'Ann' }]] }));
-  mocks.tableCount.mockReturnValue(ok(1));
-  mocks.tableStructure.mockReturnValue(ok(null));
-  const planned = `UPDATE "public"."t" SET "name" = 'Bea' WHERE "id" = '1'`;
-  mocks.planRowChange.mockReturnValue(ok({ sql: planned, warnings: ['no key'] }));
-  const verdict = { span: { start: 0, end: planned.length }, kind: 'Update', readOnly: false, riskReasons: [], reason: null };
-  mocks.prepareQuery.mockReturnValue(ok([verdict]));
-  mocks.confirm.mockResolvedValue(false);
+const columns = [
+  { name: 'id', typeName: 'int4', nullable: null },
+  { name: 'name', typeName: 'text', nullable: null },
+  { name: 'secret', typeName: 'text', nullable: null },
+];
+const planned = `UPDATE "public"."t" SET "name" = 'Bea' WHERE "id" = '1' AND "name" = 'Ann'`;
+const verdict = { span: { start: 0, end: planned.length }, kind: 'Update', readOnly: false, riskReasons: [], reason: null };
 
-  const tab = {
-    id: 't',
-    kind: 'table' as const,
-    title: 't',
-    profileId: 'p1',
-    table: { schema: 'public', name: 't' },
-  };
+const twoRows = [
+  [{ t: 'Int', v: 1 }, { t: 'Text', v: 'Ann' }, { t: 'Text', v: '***' }],
+  [{ t: 'Int', v: 2 }, { t: 'Text', v: 'Bob' }, { t: 'Text', v: '***' }],
+];
+
+function setup(primaryKey: string[] = ['id'], rows: unknown[][] = twoRows) {
+  mocks.tablePage.mockReturnValue(ok({ columns, rows }));
+  mocks.tableCount.mockReturnValue(ok(200));
+  mocks.tableStructure.mockReturnValue(ok(null));
+  mocks.gridEditInfo.mockReturnValue(
+    ok({ primaryKey, locked: [{ name: 'secret', reason: 'Masked' }], maxChanges: 1000 }),
+  );
+  mocks.planRowChanges.mockReturnValue(ok({ sql: planned, warnings: ['all or nothing'] }));
+  mocks.prepareQuery.mockReturnValue(ok([verdict]));
+  const tab = { id: 't', kind: 'table' as const, title: 't', profileId: 'p1', table: { schema: 'public', name: 't' } };
   render(
     <QueryClientProvider client={new QueryClient()}>
       <TableTab tab={tab} />
     </QueryClientProvider>,
   );
+}
 
+async function editName(to: string) {
+  await waitFor(() => expect(mocks.gridEditInfo).toHaveBeenCalled());
   const cell = await screen.findByText('Ann');
+  await waitFor(() => expect(screen.queryByText(/no primary key/)).toBeNull());
   fireEvent.doubleClick(cell);
-  fireEvent.change(await screen.findByLabelText('name'), { target: { value: 'Bea' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
+  const input = await screen.findByLabelText('Cell value');
+  fireEvent.change(input, { target: { value: to } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+}
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+it('keeps a cell edit pending, then sends the change set to Rust for review', async () => {
+  setup();
+  await editName('Bea');
+  const bar = await screen.findByRole('status', { name: 'Unsaved changes' });
+  expect(bar).toHaveTextContent('1 changed');
+  expect(mocks.planRowChanges).not.toHaveBeenCalled();
+  expect(mocks.setUnsaved).toHaveBeenLastCalledWith('t', true);
+
+  mocks.confirm.mockResolvedValue(false);
+  fireEvent.click(within(bar).getByRole('button', { name: 'Review and save' }));
   await waitFor(() => expect(mocks.confirm).toHaveBeenCalledOnce());
-  const change = mocks.planRowChange.mock.calls[0]?.[2];
-  expect(change.kind).toBe('update');
-  expect(change.values).toEqual([{ column: 'name', value: 'Bea' }]);
-  expect(change.key).toContainEqual({ column: 'id', value: '1' });
 
+  expect(mocks.planRowChanges.mock.calls[0]?.[2]).toEqual({
+    updates: [
+      {
+        key: [{ column: 'id', value: '1' }],
+        before: [{ column: 'name', value: 'Ann' }],
+        after: [{ column: 'name', value: 'Bea' }],
+      },
+    ],
+    inserts: [],
+    deletes: [],
+  });
   const request = mocks.confirm.mock.calls[0]?.[0];
   expect(request.sql).toBe(planned);
-  expect(request.warnings).toEqual(['no key']);
-  // Declined, so nothing may have been approved or run.
+  expect(request.warnings).toEqual(['all or nothing']);
+  // Declined: nothing approved or run, and the edits are still pending.
   expect(mocks.approveQuery).not.toHaveBeenCalled();
-  expect(mocks.runQuery).not.toHaveBeenCalled();
-  // And the log under the data says so.
+  expect(mocks.runRowChanges).not.toHaveBeenCalled();
   expect(await screen.findByText('Change not made: confirmation declined')).toBeInTheDocument();
-  expect(screen.getByLabelText('Run log')).toHaveTextContent(planned);
+  expect(screen.getByRole('status', { name: 'Unsaved changes' })).toBeInTheDocument();
+});
+
+it('a confirmed save is approved for the grid and runs through the grid door only', async () => {
+  setup();
+  await editName('Bea');
+  mocks.confirm.mockResolvedValue(true);
+  mocks.approveQuery.mockReturnValue(ok({ token: 'tok', verdicts: [verdict] }));
+  mocks.runRowChanges.mockReturnValue(ok(1));
+  fireEvent.click(await screen.findByRole('button', { name: 'Review and save' }));
+
+  await waitFor(() => expect(mocks.runRowChanges).toHaveBeenCalledOnce());
+  expect(mocks.approveQuery).toHaveBeenCalledWith('s1', planned, 'Grid');
+  expect(mocks.runRowChanges).toHaveBeenCalledWith('s1', planned, 'tok', 'id');
+  expect(mocks.runQuery).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.queryByRole('status', { name: 'Unsaved changes' })).toBeNull());
+  expect(screen.getByLabelText('Run log')).toHaveTextContent('Saved 1 change');
+});
+
+it('a masked column cannot be edited', async () => {
+  setup();
+  await waitFor(() => expect(mocks.gridEditInfo).toHaveBeenCalled());
+  const [masked] = await screen.findAllByText('***');
+  await waitFor(() => expect(masked).toHaveAttribute('title', 'Masked, so it cannot be edited'));
+  fireEvent.doubleClick(masked as HTMLElement);
+  expect(screen.queryByLabelText('Cell value')).toBeNull();
+});
+
+it('marks deletes and new rows without running anything', async () => {
+  setup();
+  await screen.findByText('Bob');
+  await waitFor(() => expect(mocks.gridEditInfo).toHaveBeenCalled());
+  fireEvent.click(screen.getByLabelText('Select row 2'));
+  fireEvent.click(screen.getByRole('button', { name: /Delete 1 rows/ }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Insert row' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Insert row' }));
+  const bar = await screen.findByRole('status', { name: 'Unsaved changes' });
+  expect(bar).toHaveTextContent('1 new · 1 deleted');
+  expect(screen.getByText('Bob').closest('tr')).toHaveClass('line-through');
+  expect(mocks.planRowChanges).not.toHaveBeenCalled();
+  expect(mocks.planRowChange).not.toHaveBeenCalled();
+});
+
+it('asks before paging away from unsaved edits', async () => {
+  const full = Array.from({ length: 100 }, (_, i) => [
+    { t: 'Int', v: i },
+    { t: 'Text', v: i === 0 ? 'Ann' : `n${i}` },
+    { t: 'Null' },
+  ]);
+  setup(['id'], full);
+  await editName('Bea');
+  const pages = mocks.tablePage.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(await screen.findByText('Discard unsaved changes?')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+  expect(mocks.tablePage.mock.calls.length).toBe(pages);
+  expect(screen.getByRole('status', { name: 'Unsaved changes' })).toBeInTheDocument();
+});
+
+it('a table without a primary key keeps the form and says why', async () => {
+  setup([]);
+  expect(await screen.findByText(/no primary key/)).toBeInTheDocument();
+  const cell = await screen.findByText('Ann');
+  fireEvent.doubleClick(cell);
+  expect(screen.queryByLabelText('Cell value')).toBeNull();
+  expect(await screen.findByRole('dialog', { name: 'Edit row' })).toBeInTheDocument();
 });

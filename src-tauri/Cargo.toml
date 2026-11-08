@@ -49,6 +49,9 @@ dashmap.workspace = true
 csv = "1"
 rust_xlsxwriter = { version = "0.102", features = ["constant_memory"] }
 uuid.workspace = true
+svg2pdf = { version = "0.13", default-features = false, features = ["text"] }
+resvg = { version = "0.45.1", default-features = false, features = ["text"] }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 
 [dev-dependencies]
 russh.workspace = true

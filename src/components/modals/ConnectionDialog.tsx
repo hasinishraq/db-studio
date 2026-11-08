@@ -4,7 +4,7 @@ import { open as openFile } from '@tauri-apps/plugin-dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage } from '../../api';
 import type { ConnectionProfile, Engine, Environment, HostKeyDetail, ServerInfo, SshAuth, TlsMode } from '../../bindings';
-import { Button, ErrorNote, Field, Input, Modal, Select } from '../ui';
+import { Button, Callout, ErrorNote, Field, Input, Modal, Select } from '../ui';
 
 const PORTS: Record<Engine, number> = { Postgres: 5432, MySql: 3306, Sqlite: 0 };
 
@@ -76,7 +76,7 @@ function SecretField({
 function ServerReport({ info }: { info: ServerInfo }) {
   const tls = !info.tls ? 'not encrypted' : info.tlsVerified ? 'encrypted and verified' : 'encrypted, not verified';
   return (
-    <div className="rounded border-l-4 border-safe bg-ground p-2 text-sm">
+    <Callout tone="info">
       <p>{info.version}</p>
       <p className="text-muted">The connection is {tls}.</p>
       {(info.certificates ?? []).map((c) => (
@@ -93,7 +93,7 @@ function ServerReport({ info }: { info: ServerInfo }) {
           <dd className="break-all">{c.fingerprintSha256}</dd>
         </dl>
       ))}
-    </div>
+    </Callout>
   );
 }
 
@@ -110,10 +110,10 @@ export function HostKeyPrompt({
   onCancel: () => void;
 }) {
   return (
-    <div className={`rounded border-l-4 p-2 text-sm ${changed ? 'border-danger' : 'border-change'} bg-ground`}>
-      <p className="font-bold">
-        {changed ? `The host key of ${detail.host} changed` : `First connection to ${detail.host}`}
-      </p>
+    <Callout
+      tone={changed ? 'danger' : 'change'}
+      title={changed ? `The host key of ${detail.host} changed` : `First connection to ${detail.host}`}
+    >
       <p className="mb-1 text-muted">
         {changed
           ? 'This can mean someone is intercepting the connection. Replace the key only if you know why it changed.'
@@ -127,7 +127,7 @@ export function HostKeyPrompt({
         </Button>
         <Button onClick={onCancel}>Cancel</Button>
       </div>
-    </div>
+    </Callout>
   );
 }
 
@@ -203,7 +203,7 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionProf
             <Tabs.Trigger
               key={tab}
               value={tab}
-              className="px-3 py-1.5 text-sm text-muted hover:text-ink data-[state=active]:font-bold data-[state=active]:text-ink data-[state=active]:shadow-[inset_0_-2px_0_var(--ink)]"
+              className="px-3 py-1.5 text-sm text-muted hover:text-ink data-[state=active]:font-bold data-[state=active]:text-ink data-[state=active]:shadow-[inset_0_-2px_0_var(--accent)]"
             >
               {tab === 'general' ? 'General' : tab.toUpperCase()}
             </Tabs.Trigger>
@@ -284,14 +284,10 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionProf
             </Select>
           </Field>
           {profile.tlsMode === 'Require' && (
-            <p className="border-l-4 border-change pl-2 text-sm">
-              Traffic is encrypted, but the server's identity is not checked.
-            </p>
+            <Callout tone="change">Traffic is encrypted, but the server's identity is not checked.</Callout>
           )}
           {profile.tlsMode === 'Disable' && (
-            <p className="border-l-4 border-danger pl-2 text-sm">
-              Passwords and data travel unencrypted. Use this only for a local server.
-            </p>
+            <Callout tone="danger">Passwords and data travel unencrypted. Use this only for a local server.</Callout>
           )}
           <FilePicker label="CA certificate" value={profile.caCertPath} onChange={(v) => set({ caCertPath: v })} />
           <FilePicker label="Client certificate" value={profile.clientCertPath} onChange={(v) => set({ clientCertPath: v })} />

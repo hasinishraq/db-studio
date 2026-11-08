@@ -45,7 +45,8 @@ pub type Log = Arc<Mutex<FakeLog>>;
 /// A driver that records everything.
 ///
 /// A statement containing `slow()` blocks until cancelled; one containing `boom` fails; a `SELECT`
-/// returns one row holding `canned`.
+/// returns one row holding `canned`. Other statements affect one row, or none when they contain
+/// `nomatch`, or two when they contain `twice`.
 #[derive(Clone, Default)]
 pub struct FakeDriver {
     /// The log.
@@ -112,8 +113,15 @@ impl Conn for FakeConn {
         let returns_rows =
             upper.starts_with("SELECT") || upper.starts_with("SHOW") || upper.starts_with("EXPLAIN");
         if !returns_rows {
+            let rows_affected = if stmt.contains("nomatch") {
+                0
+            } else if stmt.contains("twice") {
+                2
+            } else {
+                1
+            };
             return Ok(ExecSummary {
-                rows_affected: 1,
+                rows_affected,
                 ..Default::default()
             });
         }
@@ -316,6 +324,7 @@ pub fn profile() -> ConnectionProfile {
         read_only: false,
         ai_policy: AiPolicy::Default,
         color: None,
+        default_schema: None,
         has_password: false,
     }
 }

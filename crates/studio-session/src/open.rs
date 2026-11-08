@@ -54,6 +54,24 @@ impl OpenSession {
 }
 
 /// The database a new session starts in.
+/// Applies the profile's remembered schema, when it still exists. A failure leaves the server's
+/// own default in place; it never stops the connection.
+async fn remembered_schema(session: &dyn Session, profile: &ConnectionProfile) -> Option<String> {
+    let name = profile.default_schema.as_deref()?;
+    let exists = session.list_schemas().await.ok()?.iter().any(|s| s.name == name);
+    if !exists {
+        tracing::warn!("the remembered schema no longer exists; using the server default");
+        return None;
+    }
+    match session.use_schema(name).await {
+        Ok(()) => Some(name.to_owned()),
+        Err(error) => {
+            tracing::warn!(%error, "could not use the remembered schema");
+            None
+        }
+    }
+}
+
 fn starting_database(profile: &ConnectionProfile) -> Option<String> {
     let named = (!profile.database.is_empty()).then(|| profile.database.clone());
     match profile.engine {
@@ -119,7 +137,11 @@ impl SessionManager {
         let server = session.server_info().await?;
         let database = starting_database(&profile);
         let schema = match profile.engine {
-            Engine::Postgres => session.current_schema().await.ok().flatten(),
+            Engine::Postgres => remembered_schema(session.as_ref(), &profile).await.or(session
+                .current_schema()
+                .await
+                .ok()
+                .flatten()),
             _ => None,
         };
         let info = SessionInfo {
@@ -207,6 +229,10 @@ impl SessionManager {
                 ));
             }
             let mut profile = open.profile.clone();
+            // A remembered schema belongs to the remembered database only.
+            if profile.database != name {
+                profile.default_schema = None;
+            }
             profile.database = name.to_owned();
             let info = self.connect(profile, password, ssh_secret).await?;
             self.disconnect(id, true).await?;

@@ -264,6 +264,7 @@ describe('chat events', () => {
         rows: [[{ t: 'Int', v: 1 }]],
         rowsAffected: null,
         truncated: false,
+        chart: null,
         elapsedMs: 3,
       },
       { type: 'queryStart', id: 'q2', sql: 'DELETE', readOnly: false, reason: 'no', needsReview: true, riskReasons: [] },
@@ -314,6 +315,7 @@ describe('review card', () => {
     truncated: false,
     elapsedMs: 0,
     error: null,
+    chart: null,
   });
   const approve = () => screen.getByRole('button', { name: 'Approve' });
 

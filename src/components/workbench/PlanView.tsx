@@ -73,7 +73,10 @@ function Node({ node, top }: { node: PlanNode; top: number }) {
   const hot = top > 0 && (node.cost ?? 0) >= top * 0.6;
   return (
     <li className="my-1">
-      <div className={`border-l-4 bg-ground px-2 py-1 text-sm ${hot ? 'border-change' : 'border-line'}`}>
+      <div
+        className={`flex items-baseline gap-1.5 rounded border px-2 py-1 text-sm ${hot ? 'border-change/50 bg-change/10' : 'border-line bg-ground'}`}
+      >
+        {hot && <span className="text-xs font-bold text-change">Costly</span>}
         <strong>{node.label}</strong>
         {node.relation && <span className="font-mono"> {node.relation}</span>}
         <span className="ml-2 text-xs text-muted">

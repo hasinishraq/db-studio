@@ -16,6 +16,8 @@ use tokio_util::sync::CancellationToken;
 const AI_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const AI_APPROVED_TIMEOUT: Duration = Duration::from_secs(60);
 const AI_MAX_ROWS: u64 = 5_000;
+/// The most statements one grid save may hold.
+pub const MAX_GRID_CHANGES: usize = 1_000;
 
 /// Options for a user run.
 #[derive(Clone, Copy, Debug, Default)]
@@ -205,7 +207,9 @@ impl SessionManager {
         let origin = if needs_approval {
             let token = approval.ok_or(SessionError::ApprovalRequired)?;
             let origin = self.approvals.consume(&token, session, sql)?;
-            if origin == Origin::Ai {
+            // AI tokens have their own door, and grid tokens must use `run_changes`, which
+            // checks that every change hits exactly one row.
+            if matches!(origin, Origin::Ai | Origin::Grid) {
                 return Err(SessionError::ApprovalMismatch);
             }
             origin
@@ -373,6 +377,121 @@ impl SessionManager {
         match error {
             Some(error) => Err(error),
             None => Ok(imported),
+        }
+    }
+
+    /// The door for grid edits. Every statement must be one INSERT, UPDATE or DELETE that changes
+    /// exactly one row. They run all or nothing: inside a transaction, or a savepoint when a manual
+    /// transaction is open. Returns the number of statements applied.
+    pub async fn run_changes(
+        &self,
+        session: SessionId,
+        sql: &str,
+        token: &ApprovalToken,
+        run_id: RunId,
+    ) -> Result<u64, SessionError> {
+        let open = self.get(session)?;
+        let statements = classify_script(sql, open.engine());
+        open.policy.check(&statements)?;
+        if self.approvals.consume(token, session, sql)? != Origin::Grid {
+            return Err(SessionError::ApprovalMismatch);
+        }
+        if statements.is_empty() || statements.len() > MAX_GRID_CHANGES {
+            return Err(SessionError::Refused(format!(
+                "A save holds between 1 and {MAX_GRID_CHANGES} changes."
+            )));
+        }
+        let row_change = |kind| {
+            matches!(
+                kind,
+                StatementKind::Insert | StatementKind::Update | StatementKind::Delete
+            )
+        };
+        if statements.iter().any(|s| !row_change(s.verdict.kind)) {
+            return Err(SessionError::Refused(
+                "A grid save may only insert, update or delete rows.".to_owned(),
+            ));
+        }
+
+        let manual = open.tx.lock().await.mode == TxMode::Manual;
+        let (start, keep, undo) = if manual {
+            (
+                "SAVEPOINT studio_grid",
+                "RELEASE SAVEPOINT studio_grid",
+                "ROLLBACK TO SAVEPOINT studio_grid",
+            )
+        } else {
+            ("BEGIN", "COMMIT", "ROLLBACK")
+        };
+        let run = self.begin_run(session, run_id);
+        let mut conn = self.attach(&open, ConnScope::Current, &run).await?;
+        let opts = ExecOptions::default();
+        collect(conn.as_mut(), start, opts).await?;
+
+        let mut ran: Vec<(&ClassifiedStatement, Option<i64>)> = Vec::with_capacity(statements.len());
+        let mut failure = None;
+        for (position, statement) in statements.iter().enumerate() {
+            if run.handle.cancel.is_cancelled() {
+                failure = Some(SessionError::Db(DbError::Cancelled));
+                break;
+            }
+            match collect(conn.as_mut(), &statement.text, opts).await {
+                Ok(done) => {
+                    let rows = done.rows_affected.unwrap_or(0);
+                    ran.push((statement, i64::try_from(rows).ok()));
+                    if rows != 1 {
+                        failure = Some(SessionError::Refused(format!(
+                            "Change {} of {} affected {rows} rows instead of 1, so nothing was saved. \
+                             The row may have been changed or removed since it was loaded.",
+                            position + 1,
+                            statements.len()
+                        )));
+                        break;
+                    }
+                }
+                Err(error) => {
+                    ran.push((statement, None));
+                    failure = Some(error);
+                    break;
+                }
+            }
+        }
+
+        let finished = match failure {
+            None => collect(conn.as_mut(), keep, opts).await.err(),
+            Some(_) => {
+                let undone = collect(conn.as_mut(), undo, opts).await.err();
+                if manual && undone.is_none() {
+                    let _ = collect(conn.as_mut(), keep, opts).await;
+                }
+                undone
+            }
+        };
+        let error = failure.or(finished);
+        let label = match &error {
+            None => "ok",
+            Some(SessionError::Db(DbError::Cancelled)) => "cancelled",
+            Some(_) => "rolled back",
+        };
+        for (statement, rows) in &ran {
+            self.audit_statement(
+                &open,
+                Origin::Grid,
+                statement.verdict.kind,
+                &statement.text,
+                *rows,
+                label,
+            )
+            .await;
+        }
+        match error {
+            Some(error) => Err(error),
+            None => {
+                if manual {
+                    open.tx.lock().await.dirty = true;
+                }
+                Ok(ran.len() as u64)
+            }
         }
     }
 

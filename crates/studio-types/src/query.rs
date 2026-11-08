@@ -419,6 +419,61 @@ pub enum RowChange {
     },
 }
 
+/// One edited row in a grid save.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RowUpdate {
+    /// The primary key, as loaded.
+    pub key: Vec<CellValue>,
+    /// Each edited column's value as loaded, to notice a change made by someone else.
+    pub before: Vec<CellValue>,
+    /// Each edited column's new value.
+    pub after: Vec<CellValue>,
+}
+
+/// Every pending grid edit on one table, saved all or nothing.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeSet {
+    /// Edited rows.
+    pub updates: Vec<RowUpdate>,
+    /// New rows. A column left out takes its default.
+    pub inserts: Vec<Vec<CellValue>>,
+    /// Primary keys of rows to delete.
+    pub deletes: Vec<Vec<CellValue>>,
+}
+
+/// Why a column cannot be edited in the grid.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub enum LockReason {
+    /// Values are hidden by masking.
+    Masked,
+    /// Binary; the grid holds only a preview.
+    Binary,
+}
+
+/// A column the grid must not edit.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct LockedColumn {
+    /// Column name.
+    pub name: String,
+    /// Why.
+    pub reason: LockReason,
+}
+
+/// What the grid may edit on a table. Decided in Rust.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GridEditInfo {
+    /// Primary key columns; empty means inline editing is off.
+    pub primary_key: Vec<String>,
+    /// Columns that cannot be edited.
+    pub locked: Vec<LockedColumn>,
+    /// The most changes one save may hold.
+    pub max_changes: u32,
+}
+
 /// SQL planned by Rust for the normal review flow.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -427,6 +482,17 @@ pub struct PlannedSql {
     pub sql: String,
     /// Warnings for the confirm dialog.
     pub warnings: Vec<String>,
+}
+
+/// An image format for the schema diagram.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub enum DiagramFormat {
+    /// PNG at twice the drawn size.
+    Png,
+    /// JPEG at twice the drawn size.
+    Jpeg,
+    /// A vector PDF, one page.
+    Pdf,
 }
 
 /// A file format for export.

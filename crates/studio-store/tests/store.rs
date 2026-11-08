@@ -39,6 +39,7 @@ fn profile(name: &str) -> ConnectionProfile {
         read_only: true,
         ai_policy: AiPolicy::NoRowSharing,
         color: Some("#fff".into()),
+        default_schema: None,
         has_password: false,
     }
 }
@@ -177,7 +178,7 @@ async fn settings_default_then_persist() {
 async fn forget_from_removes_that_turn_and_later_ones() {
     let (store, _dir) = store().await;
     let c = ConversationId::new();
-    store.ensure_conversation(c, None, "t").await.unwrap();
+    store.ensure_conversation(c, None, None, "t").await.unwrap();
     let ids: Vec<TurnId> = (0..4).map(|_| TurnId::new()).collect();
     for id in &ids {
         store.append_turn(c, *id, "q", "a", &[]).await.unwrap();
@@ -191,7 +192,7 @@ async fn forget_from_removes_that_turn_and_later_ones() {
 async fn compact_keeps_the_last_turns_and_the_summary() {
     let (store, _dir) = store().await;
     let c = ConversationId::new();
-    store.ensure_conversation(c, None, "t").await.unwrap();
+    store.ensure_conversation(c, None, None, "t").await.unwrap();
     for i in 0..8 {
         store
             .append_turn(c, TurnId::new(), &format!("q{i}"), "a", &[])
@@ -350,4 +351,29 @@ fn entry_names_match_the_design() {
     );
     assert_eq!(SecretKey::SshSecret(id).entry_name(), format!("profile:{id}:ssh"));
     assert_eq!(SecretKey::AiKey("x".into()).entry_name(), "ai:x");
+}
+
+#[tokio::test]
+async fn a_conversation_names_its_connection_and_database() {
+    let (store, _dir) = store().await;
+    let p = profile("Local MySQL");
+    store.upsert_profile(&p).await.unwrap();
+    let c = ConversationId::new();
+    store
+        .ensure_conversation(c, Some(p.id), Some("shop"), "first title")
+        .await
+        .unwrap();
+    store
+        .ensure_conversation(c, Some(p.id), Some("archive"), "second title")
+        .await
+        .unwrap();
+    let listed = store.list_conversations().await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].title, "first title", "the title is kept");
+    assert_eq!(
+        listed[0].database.as_deref(),
+        Some("archive"),
+        "the database follows a switch"
+    );
+    assert_eq!(listed[0].connection.as_deref(), Some(p.name.as_str()));
 }

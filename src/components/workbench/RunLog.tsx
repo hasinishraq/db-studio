@@ -26,10 +26,11 @@ export function useRunLog() {
   return { entries, add, clear };
 }
 
+/** A small dot before each entry says what kind it is. */
 const MARK: Record<LogTone, string> = {
-  info: 'border-line',
-  change: 'border-change',
-  error: 'border-danger',
+  info: 'bg-edge',
+  change: 'bg-change',
+  error: 'bg-danger',
 };
 
 /** Sits under the table data, newest entry last. */
@@ -49,7 +50,8 @@ export function RunLog({ entries, onClear }: { entries: LogEntry[]; onClear: () 
       </div>
       <ol ref={list} className="min-h-0 flex-1 overflow-auto px-2 pb-1">
         {entries.map((entry) => (
-          <li key={entry.id} className={clsx('mb-0.5 flex gap-2 border-l-2 pl-2 text-xs', MARK[entry.tone])}>
+          <li key={entry.id} className="mb-0.5 flex items-center gap-2 text-xs">
+            <span aria-hidden className={clsx('size-1.5 shrink-0 rounded-full', MARK[entry.tone])} />
             <time className="shrink-0 text-muted">{new Date(entry.at).toLocaleTimeString()}</time>
             <span className="shrink-0">{entry.text}</span>
             {entry.sql && (

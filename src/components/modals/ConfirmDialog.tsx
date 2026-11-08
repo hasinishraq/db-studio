@@ -4,7 +4,8 @@ import { clsx } from 'clsx';
 import type { ConfirmRequest } from '../../api/run';
 import type { StatementVerdict } from '../../bindings';
 import { spanText } from '../../lib/sqlText';
-import { Button, Input } from '../ui';
+import { Button, Callout, Input, OVERLAY, SURFACE } from '../ui';
+import { CircleAlert, TriangleAlert } from 'lucide-react';
 
 /** Friendly names for statement categories. */
 const KIND: Record<StatementVerdict['kind'], string> = {
@@ -69,7 +70,7 @@ export function Guards({
   );
 }
 
-/** The review before a write. Its colour says how much is at stake. */
+/** The review before a write. The icon and the Run button's colour say how much is at stake. */
 export function ConfirmDialog({
   request,
   onSettle,
@@ -87,14 +88,10 @@ export function ConfirmDialog({
   return (
     <AlertDialog.Root open>
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-        <AlertDialog.Content
-          className={clsx(
-            'fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[92vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-md border-l-8 bg-panel p-4',
-            highRisk ? 'border-danger' : 'border-change',
-          )}
-        >
-          <AlertDialog.Title className="text-xl font-bold">
+        <AlertDialog.Overlay className={OVERLAY} />
+        <AlertDialog.Content className={clsx(SURFACE, 'max-w-2xl')}>
+          <AlertDialog.Title className="flex items-center gap-2 text-lg font-bold">
+            <RiskIcon highRisk={highRisk} />
             {highRisk ? 'This cannot be undone' : 'Review this change'}
           </AlertDialog.Title>
           <AlertDialog.Description className="mb-3 text-sm text-muted">
@@ -120,9 +117,9 @@ export function ConfirmDialog({
             </ul>
           )}
           {request.warnings.map((warning) => (
-            <p key={warning} className="mb-2 border-l-4 border-change pl-2 text-sm">
+            <Callout key={warning} tone="change" className="mb-2">
               {warning}
-            </p>
+            </Callout>
           ))}
 
           <Guards guards={guards} highRisk={highRisk} production={production} connectionName={request.connectionName} />
@@ -139,4 +136,10 @@ export function ConfirmDialog({
       </AlertDialog.Portal>
     </AlertDialog.Root>
   );
+}
+
+/** The mark beside a review's title: amber for a change, red for one that cannot be undone. */
+export function RiskIcon({ highRisk }: { highRisk: boolean }) {
+  const Icon = highRisk ? CircleAlert : TriangleAlert;
+  return <Icon size={20} aria-hidden className={clsx('shrink-0', highRisk ? 'text-danger' : 'text-change')} />;
 }

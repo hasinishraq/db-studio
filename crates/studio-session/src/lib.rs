@@ -14,4 +14,4 @@ pub use audit::{AuditSink, NullAuditSink};
 pub use manager::{SessionError, SessionManager};
 pub use open::{Connector, OpenSession, Route};
 pub use policy::SessionPolicy;
-pub use run::{AiQueryResult, RunOptions};
+pub use run::{AiQueryResult, RunOptions, MAX_GRID_CHANGES};

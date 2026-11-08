@@ -1,4 +1,4 @@
-import type { AiEvent, ColumnMeta, Value } from '../bindings';
+import type { AiEvent, ChartSpec, ColumnMeta, Value } from '../bindings';
 
 export type QueryStatus = 'review' | 'running' | 'done' | 'declined' | 'cancelled' | 'error';
 
@@ -16,6 +16,8 @@ export interface QueryPart {
   truncated: boolean;
   elapsedMs: number;
   error: string | null;
+  /** The chart the assistant asked for, checked by Rust. Column names only. */
+  chart: ChartSpec | null;
 }
 
 export type Part = { kind: 'text'; text: string } | { kind: 'query'; query: QueryPart };
@@ -27,6 +29,8 @@ export interface TurnView {
   parts: Part[];
   finished: boolean;
   error: string | null;
+  /** A note between turns, such as a change of database. Set on notes only. */
+  note?: string;
 }
 
 function updateQuery(turn: TurnView, id: string, change: (query: QueryPart) => QueryPart): TurnView {
@@ -68,6 +72,7 @@ export function applyAiEvent(turn: TurnView, event: AiEvent): TurnView {
               truncated: false,
               elapsedMs: 0,
               error: null,
+              chart: null,
             },
           },
         ],
@@ -87,6 +92,7 @@ export function applyAiEvent(turn: TurnView, event: AiEvent): TurnView {
         rowsAffected: event.rowsAffected,
         truncated: event.truncated,
         elapsedMs: event.elapsedMs,
+        chart: event.chart,
       }));
     case 'queryError':
       return updateQuery(turn, event.id, (query) => ({ ...query, status: 'error', error: event.message }));

@@ -33,3 +33,12 @@ their window handles and sends no keystrokes. Windows only.
 
 If an installed copy is open, set `WEBVIEW2_USER_DATA_FOLDER` to a scratch folder. Two copies with
 different launch flags cannot share a WebView2 profile, and the second fails with 0x8007139F.
+
+## grid-and-diagram.mjs
+
+Covers inline grid editing (edit, Tab to the next cell, new rows, marked deletes, the pending bar,
+the unsaved-changes prompts, a save refused because the row changed elsewhere, the form for tables
+without a key) and saving the diagram as PNG, JPEG and PDF through the real save dialog, and setting a
+remembered default schema from the right-click menu, which must survive a reconnect and show in
+the assistant. Needs
+PostgreSQL on port 54329 and `E2E_APP_PID`, as above. Windows only.

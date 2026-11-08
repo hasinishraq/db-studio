@@ -62,7 +62,15 @@ pub fn build_system_prompt(ctx: &PromptContext<'_>) -> String {
     if ctx.tools {
         out.push_str(
             "Use the run_sql tool to run SQL, describe_table for a table's structure, explain_query \
-             for a plan and list_tables for table names.\n\n",
+             for a plan and list_tables for table names.\n\n\
+             Charts: when the user asks for a chart, graph or plot, or a breakdown that reads best \
+             as one, write a read that returns one label column and one or more numeric columns, \
+             already aggregated and ordered, and pass chart to run_sql with type, x (the label \
+             column) and y (the value columns, as named in the result). Use line or area for time, \
+             bar or horizontal_bar to compare, stacked_bar for parts over categories, pie or donut \
+             for a few parts of one whole (at most 6 rows, positive values), scatter for two \
+             numeric columns. Keep bar charts under 40 rows. The app draws the chart from the real \
+             rows; never write chart values, image links or chart code yourself.\n\n",
         );
     } else {
         out.push_str("To run SQL, put exactly one statement in a fenced ```sql block.\n\n");

@@ -128,3 +128,41 @@ async fn a_schema_choice_is_checked_like_a_database_choice() {
         Err(SessionError::Refused(_))
     ));
 }
+
+#[tokio::test]
+async fn a_remembered_schema_is_used_on_connect() {
+    let h = harness();
+    let mut p = profile();
+    p.default_schema = Some("public".into());
+    let info = h.manager.connect(p, None, None).await.unwrap();
+    assert_eq!(info.schema.as_deref(), Some("public"));
+    assert_eq!(
+        h.driver.log.lock().unwrap().used_schemas,
+        vec!["public".to_owned()]
+    );
+}
+
+#[tokio::test]
+async fn a_remembered_schema_that_is_gone_is_ignored() {
+    let h = harness();
+    let mut p = profile();
+    p.default_schema = Some("dropped".into());
+    let info = h.manager.connect(p, None, None).await.unwrap();
+    assert!(h.driver.log.lock().unwrap().used_schemas.is_empty());
+    assert_eq!(
+        info.schema.as_deref(),
+        Some("public"),
+        "the server's own default stays"
+    );
+}
+
+#[tokio::test]
+async fn a_remembered_schema_is_not_carried_to_another_database() {
+    let h = harness();
+    let mut p = profile();
+    p.default_schema = Some("public".into());
+    let id = h.manager.connect(p, None, None).await.unwrap().session_id;
+    h.driver.log.lock().unwrap().used_schemas.clear();
+    h.manager.use_database(id, "other", None, None).await.unwrap();
+    assert!(h.driver.log.lock().unwrap().used_schemas.is_empty());
+}

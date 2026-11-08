@@ -2,6 +2,7 @@
 //! for a human. It reaches databases only through `studio-session`.
 
 pub mod agent;
+pub mod chart;
 pub mod describe;
 pub mod hub;
 pub mod limits;

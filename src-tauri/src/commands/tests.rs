@@ -423,3 +423,68 @@ fn only_human_click_commands_mint_tokens() {
         "ApprovalBook::issue is called from an unexpected place"
     );
 }
+
+#[tokio::test]
+async fn a_default_is_remembered_and_forgotten() {
+    let e = env().await;
+    let saved = profiles::save(&e.store, profile(), None).await.unwrap();
+    let kept = profiles::remember(&e.store, saved.id, Some("shop".into()), Some("sales".into()))
+        .await
+        .unwrap();
+    assert_eq!(
+        (kept.database.as_str(), kept.default_schema.as_deref()),
+        ("shop", Some("sales"))
+    );
+    let read = e.store.get_profile(saved.id).await.unwrap();
+    assert_eq!(
+        read.default_schema.as_deref(),
+        Some("sales"),
+        "it survives a reload"
+    );
+    let forgotten = profiles::remember(&e.store, saved.id, None, None).await.unwrap();
+    assert_eq!(
+        (forgotten.database.as_str(), forgotten.default_schema),
+        ("", None)
+    );
+}
+
+#[tokio::test]
+async fn bad_defaults_are_refused() {
+    let e = env().await;
+    let pg = profiles::save(&e.store, profile(), None).await.unwrap();
+    for (database, schema) in [
+        (None, Some("s")),
+        (Some(""), None),
+        (Some("a\nb"), None),
+        (Some("shop"), Some("x\u{0}y")),
+    ] {
+        let result = profiles::remember(
+            &e.store,
+            pg.id,
+            database.map(str::to_owned),
+            schema.map(str::to_owned),
+        )
+        .await;
+        assert!(result.is_err(), "{database:?} {schema:?}");
+    }
+    let mut my = profile();
+    my.id = ProfileId::new();
+    my.engine = Engine::MySql;
+    let my = profiles::save(&e.store, my, None).await.unwrap();
+    assert!(
+        profiles::remember(&e.store, my.id, Some("shop".into()), Some("s".into()))
+            .await
+            .is_err()
+    );
+    assert!(profiles::remember(&e.store, my.id, Some("shop".into()), None)
+        .await
+        .is_ok());
+    let mut lite = profile();
+    lite.id = ProfileId::new();
+    lite.engine = Engine::Sqlite;
+    lite.database = "x.db".into();
+    let lite = profiles::save(&e.store, lite, None).await.unwrap();
+    assert!(profiles::remember(&e.store, lite.id, Some("y".into()), None)
+        .await
+        .is_err());
+}

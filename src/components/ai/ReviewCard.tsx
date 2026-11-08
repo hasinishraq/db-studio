@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { clsx } from 'clsx';
 import type { Environment } from '../../bindings';
 import type { QueryPart } from '../../lib/chat';
-import { Guards, useGuards } from '../modals/ConfirmDialog';
+import { Guards, RiskIcon, useGuards } from '../modals/ConfirmDialog';
 import { Button } from '../ui';
 
 /** A statement waiting for a person. It runs only if Approve is clicked. */
@@ -26,8 +25,11 @@ export function ReviewCard({
     onDecide(approved);
   };
   return (
-    <div className={clsx('my-2 rounded border-l-8 bg-panel p-3', highRisk ? 'border-danger' : 'border-change')}>
-      <p className="font-bold">{highRisk ? 'This cannot be undone' : 'The assistant wants to run this'}</p>
+    <div className="my-2 rounded-lg border border-line bg-panel p-3">
+      <p className="flex items-center gap-2 font-bold">
+        <RiskIcon highRisk={highRisk} />
+        {highRisk ? 'This cannot be undone' : 'The assistant wants to run this'}
+      </p>
       <p className="text-sm text-muted">
         On {connectionName} ({environment}). {query.reason}
       </p>

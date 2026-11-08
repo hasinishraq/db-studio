@@ -9,6 +9,7 @@ use studio_ai::providers::fake::{FakeProvider, Reply};
 use studio_ai::{AiError, ChatChunk, Engine, TurnOptions};
 use studio_session::testing::{harness, profile, Harness};
 use studio_store::{MemorySecretStore, Store};
+use studio_types::Engine as DbEngineKind;
 use studio_types::*;
 use tempfile::TempDir;
 use tokio::sync::mpsc;
@@ -630,7 +631,7 @@ async fn the_loop_stops_after_eight_steps() {
 async fn compaction_keeps_the_last_six_turns() {
     let e = env().await;
     e.store
-        .ensure_conversation(e.conversation, None, "t")
+        .ensure_conversation(e.conversation, None, None, "t")
         .await
         .unwrap();
     for i in 0..9 {
@@ -659,7 +660,7 @@ async fn compaction_loses_nothing_when_summarising_fails() {
     for failing in [Reply::Fail(AiError::Provider("down".into())), say("   ")] {
         let e = env().await;
         e.store
-            .ensure_conversation(e.conversation, None, "t")
+            .ensure_conversation(e.conversation, None, None, "t")
             .await
             .unwrap();
         for i in 0..9 {
@@ -674,4 +675,180 @@ async fn compaction_loses_nothing_when_summarising_fails() {
         assert_eq!(e.store.list_turns(e.conversation).await.unwrap().len(), 10);
         assert_eq!(e.store.get_summary(e.conversation).await.unwrap(), None);
     }
+}
+
+fn chart_call(sql: &str, chart: serde_json::Value) -> ChatChunk {
+    ChatChunk::ToolCall {
+        id: "c1".into(),
+        name: "run_sql".into(),
+        args_json: json!({ "sql": sql, "chart": chart }).to_string(),
+    }
+}
+
+fn with_region_totals(e: &Env) {
+    let column = |name: &str, type_name: &str| ColumnMeta {
+        name: name.into(),
+        type_name: type_name.into(),
+        nullable: None,
+    };
+    *e.h.driver.rows.lock().unwrap() = Some((
+        vec![column("region", "text"), column("total", "int4")],
+        vec![
+            vec![Value::Text(SENSITIVE.into()), Value::Int(40)],
+            vec![Value::Text("south".into()), Value::Int(60)],
+        ],
+    ));
+}
+
+fn result_chart(events: &[AiEvent]) -> Option<ChartSpec> {
+    events.iter().find_map(|ev| match ev {
+        AiEvent::QueryResult { chart, .. } => Some(chart.clone()),
+        _ => None,
+    })?
+}
+
+#[tokio::test]
+async fn a_chart_request_reaches_the_ui_without_sharing_rows() {
+    let e = env().await;
+    with_region_totals(&e);
+    let provider = Arc::new(FakeProvider::new(vec![
+        tool(vec![chart_call(
+            "SELECT region, total FROM sales",
+            json!({ "type": "pie", "x": "region", "y": ["total"], "title": "Sales by region" }),
+        )]),
+        say("ok"),
+    ]));
+    let events = e.run(provider.clone(), false, true).await;
+    assert_eq!(
+        result_chart(&events),
+        Some(ChartSpec {
+            kind: ChartKind::Pie,
+            x: "region".into(),
+            y: vec!["total".into()],
+            title: Some("Sales by region".into()),
+        })
+    );
+    let sent = provider.everything_sent();
+    assert!(
+        sent.contains("pie chart of total by region"),
+        "the model is told what the user sees"
+    );
+    assert!(!sent.contains(SENSITIVE), "drawing a chart shares no rows");
+}
+
+#[tokio::test]
+async fn a_chart_naming_a_missing_column_is_dropped_and_the_model_is_told() {
+    let e = env().await;
+    with_region_totals(&e);
+    let provider = Arc::new(FakeProvider::new(vec![
+        tool(vec![chart_call(
+            "SELECT region, total FROM sales",
+            json!({ "type": "bar", "x": "region", "y": ["revenue"] }),
+        )]),
+        say("ok"),
+    ]));
+    let events = e.run(provider.clone(), false, true).await;
+    assert_eq!(result_chart(&events), None);
+    assert!(events
+        .iter()
+        .any(|ev| matches!(ev, AiEvent::QueryResult { rows, .. } if rows.len() == 2)));
+    assert!(provider
+        .everything_sent()
+        .contains("No chart was drawn: the result has no column revenue"));
+}
+
+#[tokio::test]
+async fn a_malformed_chart_never_stops_the_query() {
+    let e = env().await;
+    let provider = Arc::new(FakeProvider::new(vec![
+        tool(vec![chart_call(
+            "SELECT 1",
+            json!({ "type": "radar", "x": "a", "y": ["b"] }),
+        )]),
+        say("ok"),
+    ]));
+    let events = e.run(provider.clone(), false, true).await;
+    assert!(events
+        .iter()
+        .any(|ev| matches!(ev, AiEvent::QueryResult { chart: None, .. })));
+    assert!(provider
+        .everything_sent()
+        .contains("No chart was drawn: type must be one of"));
+}
+
+#[tokio::test]
+async fn the_prompt_and_tool_offer_charts() {
+    let e = env().await;
+    let provider = Arc::new(FakeProvider::new(vec![say("ok")]));
+    e.run(provider.clone(), false, true).await;
+    let sent = provider.everything_sent();
+    assert!(sent.contains("pass chart to run_sql"));
+    assert!(
+        sent.contains("horizontal_bar"),
+        "the tool schema lists the chart types"
+    );
+}
+
+fn mysql(database: &str) -> ConnectionProfile {
+    ConnectionProfile {
+        engine: DbEngineKind::MySql,
+        database: database.into(),
+        ..profile()
+    }
+}
+
+async fn system_prompt(e: &Env) -> String {
+    let provider = Arc::new(FakeProvider::new(vec![say("ok")]));
+    e.run(provider.clone(), false, true).await;
+    format!(
+        "{:?}",
+        provider.requests().first().map(|r| r.messages.first().cloned())
+    )
+}
+
+#[tokio::test]
+async fn the_assistant_sees_only_the_database_in_use() {
+    // The fake server's only schema is "public", holding users(id, email).
+    let e = env_with(mysql("public")).await;
+    let prompt = system_prompt(&e).await;
+    assert!(prompt.contains("Database in use: public"), "{prompt}");
+    assert!(prompt.contains("public.users(id text, email text)"), "{prompt}");
+    assert!(prompt.contains("do not read or change other databases"));
+
+    // Another database in use: the tables of "public" are not offered.
+    let e = env_with(mysql("other")).await;
+    let prompt = system_prompt(&e).await;
+    assert!(prompt.contains("Database in use: other"), "{prompt}");
+    assert!(!prompt.contains("public.users"), "{prompt}");
+}
+
+#[tokio::test]
+async fn with_no_database_in_use_the_assistant_asks_which() {
+    let e = env_with(mysql("")).await;
+    let prompt = system_prompt(&e).await;
+    assert!(prompt.contains("No database is in use"), "{prompt}");
+    assert!(
+        prompt.contains("app, other"),
+        "the database names are given: {prompt}"
+    );
+    assert!(
+        !prompt.contains("public.users"),
+        "no tables from the whole server: {prompt}"
+    );
+}
+
+#[tokio::test]
+async fn postgres_names_its_database_and_schema() {
+    let e = env().await;
+    let prompt = system_prompt(&e).await;
+    assert!(prompt.contains("Database in use: app, schema public"), "{prompt}");
+    assert!(prompt.contains("public.users"), "{prompt}");
+}
+
+#[tokio::test]
+async fn the_conversation_records_its_database() {
+    let e = env().await;
+    system_prompt(&e).await;
+    let listed = e.store.list_conversations().await.unwrap();
+    assert_eq!(listed[0].database.as_deref(), Some("app"));
 }

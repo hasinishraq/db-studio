@@ -246,11 +246,11 @@ async fn audit_records_writes_only() {
     run(&h, s, "SELECT 1", None).await.unwrap();
     assert!(h.audit.entries.lock().unwrap().is_empty());
     let script = "SELECT 1; DELETE FROM t WHERE id = 1";
-    let token = h.approvals.issue(s, script, Origin::Grid);
+    let token = h.approvals.issue(s, script, Origin::Editor);
     run(&h, s, script, Some(token)).await.unwrap();
     let entries = h.audit.entries.lock().unwrap().clone();
     assert_eq!(entries.len(), 1, "one entry per non-read statement");
-    assert_eq!(entries[0].origin, Origin::Grid);
+    assert_eq!(entries[0].origin, Origin::Editor);
     assert_eq!(entries[0].sql_text, "DELETE FROM t WHERE id = 1");
     assert_eq!(entries[0].kind, StatementKind::Delete);
     assert_eq!(

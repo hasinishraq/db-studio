@@ -59,6 +59,9 @@ pub enum AiEvent {
         truncated: bool,
         /// Elapsed milliseconds.
         elapsed_ms: u64,
+        /// The chart the model asked for, checked against the columns. Names columns only; the
+        /// values always come from `rows`.
+        chart: Option<ChartSpec>,
     },
     /// It failed.
     QueryError {
@@ -114,6 +117,10 @@ pub struct ConversationSummary {
     pub title: String,
     /// Last update, milliseconds since the epoch.
     pub updated_at: i64,
+    /// The connection's name, when it still exists.
+    pub connection: Option<String>,
+    /// The database the conversation last worked in.
+    pub database: Option<String>,
 }
 
 /// What memory keeps about a statement. Never rows.
@@ -142,4 +149,40 @@ pub struct TurnRecord {
     pub assistant_text: String,
     /// Statements and outcomes.
     pub queries: Vec<QueryRecord>,
+}
+
+/// A chart form.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ChartKind {
+    /// Vertical bars.
+    Bar,
+    /// Horizontal bars, for many or long labels.
+    HorizontalBar,
+    /// Stacked vertical bars.
+    StackedBar,
+    /// Lines.
+    Line,
+    /// Lines with a light fill.
+    Area,
+    /// A pie.
+    Pie,
+    /// A pie with a hole.
+    Donut,
+    /// Points on two value axes.
+    Scatter,
+}
+
+/// A chart over a result. Holds column names only, never values.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartSpec {
+    /// The form.
+    pub kind: ChartKind,
+    /// Column for labels (or the x values of a scatter).
+    pub x: String,
+    /// Value columns, one series each.
+    pub y: Vec<String>,
+    /// A short title.
+    pub title: Option<String>,
 }

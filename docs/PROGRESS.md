@@ -269,6 +269,107 @@ apply. Nothing has been committed; the human reviews and commits.
 - E2E helper `t.label` now ignores hidden labels; it had matched Settings' "Model" for "Mode".
 - Checked: Rust and frontend tests, clippy, fmt, E2E 39/39, 20/20 and 74/74.
 
+## After hand-over: one popup style, no side bars
+- Coloured bars down the left edge are gone everywhere (review popup, AI review card, host key, TLS
+  notes, server report, errors, plan nodes, run log, selection). They replace the ink bar noted above.
+- A blue `--accent` (with `--on-accent`) now marks what you act on and where you are: primary
+  buttons, focus ring, text selection, the open side panel, and a 2px underline on the open tab.
+  `.here` is only the picked background. Safe, change and danger still mean risk only.
+- Every popup shares `SURFACE` and `OVERLAY` from `components/ui` (rounded, thin border, `shadow-pop`).
+  The review popup is the same as any other; risk shows as an icon by the title (`RiskIcon`) and the
+  Run button's colour. Guards and button disabling are unchanged.
+- New `Callout` (info, change, danger): full thin border, faint tint, icon. `ErrorNote` uses it.
+  Run log entries get a small coloured dot; costly plan nodes a tinted box and the word "Costly".
+- The environment band is kept as it was.
+- Checked: typecheck, frontend tests 51/51, production build. Not checked by eye in the running app.
+
+## After hand-over: inline grid editing, diagram images
+- Table tabs edit cells in place: double-click, Enter or F2; Enter or Tab keeps, Esc drops, Alt+N or
+  the NULL button sets NULL. Edits, new rows (top of the grid, "default" until typed) and marked
+  deletes stay pending in a bar with Discard and Review and save. Right-click reverts a cell or row.
+  Paging, sorting, filtering and closing the tab ask before dropping pending edits. While edits are
+  pending the grid keeps the rows they were made on, even if a refresh lands.
+- Rust decides what may be edited (`grid_edit_info`): a primary key is required; masked and binary
+  columns are locked. Tables without a key, and read-only connections, say why in the grid; tables
+  without a key keep the row form.
+- `plan_row_changes` writes one statement per row: deletes, then updates, then inserts. An UPDATE
+  also matches the loaded value of each edited column, except float, JSON and unknown types, so a
+  row changed elsewhere matches nothing. An empty new row is `DEFAULT VALUES` (`() VALUES ()` on
+  MySQL). At most 1,000 changes per save.
+- New door `SessionManager::run_changes` (command `run_row_changes`): grid tokens only; every
+  statement must be INSERT, UPDATE or DELETE and change exactly one row; `BEGIN`/`COMMIT`, or a
+  `SAVEPOINT` when a manual transaction is open, and a rollback otherwise. Audit outcomes are `ok`
+  or `rolled back`.
+- Deviation: `run_user` now refuses grid tokens, so the row form also uses the new door, and
+  `plan_row_change` deletes one row per statement instead of one `OR` statement. The audit test that
+  used a grid token in `run_user` now uses an editor token; what it checks is unchanged.
+- Deviation: MySQL connections set `CLIENT_FOUND_ROWS`, so an UPDATE reports rows matched, as on
+  PostgreSQL and SQLite. Without it, saving an unchanged value reports 0 rows. This also changes
+  the affected count shown for typed MySQL UPDATEs.
+- Masking now also stops `plan_row_change` from writing a masked column or using one as a key.
+- The diagram saves as PNG, JPEG (both 2x, white) or PDF (vector, one page sized to the diagram,
+  shrunk under 14,000 pt). The webview sends a standalone light SVG (`lib/diagramExport.ts`); Rust
+  renders it with resvg and svg2pdf and opens the save dialog. The SVG is capped at 8 MB, may not
+  reference any image, file or URL, and rasters are capped at 16,384 px a side and 40 MP.
+- Decision: Atkinson Hyperlegible and JetBrains Mono TTFs (OFL, licences beside them) are bundled
+  in `src-tauri/fonts/` for the renderer, which cannot read the UI's woff2 files. No system fonts.
+- `deny.toml`: two more unmaintained-crate exceptions, `rustybuzz` and `ttf-parser`, under resvg
+  and svg2pdf. Not vulnerable, no replacement; they only parse the bundled fonts.
+- Checked: 325 Rust tests, 65 frontend tests, clippy, fmt, `cargo deny`, typecheck.
+- Not run: the PostgreSQL, MySQL and MariaDB cases of `studio-session/tests/grid_real.rs` (SQLite
+  passed) and the new `tests/e2e/grid-and-diagram.mjs`. The portable test servers were gone. Not
+  checked by eye in the running app.
+
+## After hand-over: charts in the assistant
+- Why it failed before: the model had no way to ask for a chart and the prompt never mentioned
+  charts; the app only guessed a single-series bar or line for 2 to 60 rows.
+- `run_sql` takes an optional `chart` { type, x, y[], title }: bar, horizontal_bar, stacked_bar,
+  line, area, pie, donut, scatter. It names columns only; values always come from the rows the
+  database returned, and no row is sent to the model for it (rule 9 unchanged). `studio_ai::chart`
+  parses it (at most 5 series, pie one) and checks the columns against the result; a bad request
+  never stops the query, and the model is told why no chart was drawn. The prompt says when and
+  how to ask. `AiEvent::QueryResult.chart` carries it to the UI.
+- Every result has a "Show as" chooser (table or any form); forms that do not fit are greyed out
+  with the reason (`buildChart` in `lib/chart.ts`). Pie and donut fold past 6 parts into Other and
+  refuse negatives; bars stop at 40 rows, horizontal at 50, scatter at 3 series.
+- `ResultChart` draws everything in one SVG (title, legend for 2+ series, ticks, tooltips). "Save
+  chart" sends a standalone light SVG to `export_diagram`, so PNG, JPEG and PDF reuse the diagram
+  renderer and Rust's save dialog.
+- Decision: series colours are the dataviz reference palette's first five hues (`--chart-1..5`,
+  plus `--chart-other`), validated for colour vision deficiency in both themes on this app's
+  surfaces. The only set avoiding the risk hues (blue, violet, magenta) failed that check, so some
+  chart hues sit near safe and change. Charts always carry a legend or labels, so colour never
+  means anything alone. Light aqua, yellow and magenta are under 3:1 on the surface; the legend
+  and the table view are the required relief.
+- Checked: 335 Rust tests, 79 frontend tests, clippy, fmt, `cargo deny`, typecheck. Every form was
+  rendered through the export path and looked at. Not tried against a real model or in the app.
+
+## After hand-over: default database from the side panel, assistant scoped to it
+- Right-click a database (PostgreSQL databases, MySQL databases) or a PostgreSQL schema, or press
+  Shift+F10 or the Menu key on it: Use as default, Use as default and remember, Forget remembered
+  default, New query here, and for schemas New table and Diagram. Left click works as before.
+- Remembering saves the profile's `database` and, new, `default_schema` (migration 0002), through
+  `remember_default`, which reads the profile from the store and checks the names in Rust rather
+  than taking a whole profile from the webview. On connect a remembered schema is used if it still
+  exists; otherwise the server default stays, and the connection never fails for it. A remembered
+  schema is not carried to another PostgreSQL database.
+- The assistant works on the database in use only. Before, on MySQL and MariaDB it was given every
+  database's tables, because each MySQL database is a schema. Now its table list and `list_tables`
+  cover the database in use (PostgreSQL: its schemas, the one in use first). The prompt names the
+  database and schema and says to stay in it. With no MySQL database in use it gets only the
+  database names and asks the user to pick one.
+- Not enforced: a qualified name such as `otherdb.t` can still be written. Refusing that would be
+  a `studio-safety` change.
+- The chat shows "Working in server › database › schema", lists connections that way, and has
+  database and schema pickers that use the same switch as the side panel (`lib/useNamespace.ts`).
+  A switch mid-chat adds a note to the conversation. Conversations record their database, and the
+  list shows "connection · database".
+- Slip, corrected: running `npx prettier` on `AiTab.tsx` fetched Prettier with its defaults (the
+  project has no config) and reflowed the file. It was reformatted with single quotes and 120
+  columns, and the two untouched places that still differed were put back by hand.
+- Checked: 345 Rust tests, 84 frontend tests, clippy, fmt, `cargo deny`, typecheck. The new
+  end-to-end steps in `grid-and-diagram.mjs` have not run (no test servers).
+
 ## Verification at hand-over
 - `cargo test --workspace` with every server up, including MySQL TLS: 250 passed, 0 failed, 0 skipped.
 - `npm test`: 34 passed. Clippy, fmt and `cargo deny check` clean.

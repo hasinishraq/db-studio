@@ -15,7 +15,7 @@ use studio_types::{
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
-fn file_error(error: impl std::fmt::Display) -> AppError {
+pub(crate) fn file_error(error: impl std::fmt::Display) -> AppError {
     AppError::new(ErrorCode::Internal, format!("file error: {error}"))
 }
 

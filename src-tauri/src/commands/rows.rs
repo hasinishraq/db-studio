@@ -2,8 +2,10 @@
 //! review flow, so edits are confirmed and audited like typed SQL.
 
 use super::check_text;
+use super::query::grid_masks;
 use crate::error::AppResult;
 use crate::state::AppState;
+use studio_ai::mask::Masks;
 use studio_db::sql::{qualified, quote_ident};
 use studio_types::{
     AppError, CellValue, ColumnInfo, Engine, NewColumn, PlannedSql, RowChange, SessionId, TableRef,
@@ -18,11 +20,11 @@ pub fn literal(engine: Engine, value: &str) -> Result<String, AppError> {
     Ok(studio_db::sql::string_literal(engine, value))
 }
 
-fn rendered(engine: Engine, value: Option<&str>) -> Result<String, AppError> {
+pub(crate) fn rendered(engine: Engine, value: Option<&str>) -> Result<String, AppError> {
     value.map_or_else(|| Ok("NULL".to_owned()), |v| literal(engine, v))
 }
 
-fn check_columns(cells: &[CellValue], known: &[ColumnInfo]) -> Result<(), AppError> {
+pub(crate) fn check_columns(cells: &[CellValue], known: &[ColumnInfo]) -> Result<(), AppError> {
     for cell in cells {
         if !known.iter().any(|c| c.name == cell.column) {
             return Err(AppError::invalid(format!(
@@ -44,7 +46,7 @@ fn identify(
     let primary: Vec<&ColumnInfo> = columns.iter().filter(|c| c.primary_key).collect();
     if primary.is_empty() {
         const WARNING: &str = "This table has no primary key, so every column identifies the row. \
-                               Identical rows would all change.";
+                               If another row is identical, nothing is saved.";
         if !warnings.iter().any(|w| w == WARNING) {
             warnings.push(WARNING.to_owned());
         }
@@ -61,7 +63,7 @@ fn identify(
         .collect()
 }
 
-fn where_row(engine: Engine, key: &[CellValue]) -> Result<String, AppError> {
+pub(crate) fn where_row(engine: Engine, key: &[CellValue]) -> Result<String, AppError> {
     if key.is_empty() {
         return Err(AppError::invalid("the row has no identifying values"));
     }
@@ -78,11 +80,24 @@ fn where_row(engine: Engine, key: &[CellValue]) -> Result<String, AppError> {
     Ok(parts.join(" AND "))
 }
 
-/// Plans one change against a table's columns.
+/// Refuses cells in columns whose values the grid only shows masked.
+pub(crate) fn check_unmasked(cells: &[CellValue], masks: Option<&Masks>) -> Result<(), AppError> {
+    if let Some(cell) = cells.iter().find(|c| masks.is_some_and(|m| m.hides(&c.column))) {
+        return Err(AppError::invalid(format!(
+            "{} is masked, so it cannot be edited or used to find a row",
+            cell.column
+        )));
+    }
+    Ok(())
+}
+
+/// Plans one change against a table's columns. Each deleted row gets its own statement, so the
+/// grid's door can check that every statement changes exactly one row.
 pub fn plan_change(
     engine: Engine,
     table: &TableRef,
     columns: &[ColumnInfo],
+    masks: Option<&Masks>,
     change: &RowChange,
 ) -> Result<PlannedSql, AppError> {
     let target = qualified(engine, &table.schema, &table.name);
@@ -90,6 +105,7 @@ pub fn plan_change(
     let sql = match change {
         RowChange::Insert { values } => {
             check_columns(values, columns)?;
+            check_unmasked(values, masks)?;
             if values.is_empty() {
                 return Err(AppError::invalid("there is nothing to insert"));
             }
@@ -107,6 +123,7 @@ pub fn plan_change(
         RowChange::Update { key, values } => {
             check_columns(key, columns)?;
             check_columns(values, columns)?;
+            check_unmasked(values, masks)?;
             if values.is_empty() {
                 return Err(AppError::invalid("there is nothing to update"));
             }
@@ -118,6 +135,7 @@ pub fn plan_change(
                 })
                 .collect::<Result<Vec<_>, AppError>>()?;
             let key = identify(key, columns, &mut warnings)?;
+            check_unmasked(&key, masks)?;
             format!(
                 "UPDATE {target} SET {} WHERE {}",
                 sets.join(", "),
@@ -132,9 +150,10 @@ pub fn plan_change(
             for key in keys {
                 check_columns(key, columns)?;
                 let key = identify(key, columns, &mut warnings)?;
-                rows.push(format!("({})", where_row(engine, &key)?));
+                check_unmasked(&key, masks)?;
+                rows.push(format!("DELETE FROM {target} WHERE {}", where_row(engine, &key)?));
             }
-            format!("DELETE FROM {target} WHERE {}", rows.join(" OR "))
+            rows.join(";\n")
         }
     };
     Ok(PlannedSql { sql, warnings })
@@ -206,7 +225,8 @@ pub async fn plan_row_change(
 ) -> Result<PlannedSql, AppError> {
     let open = state.sessions.get(session_id).app()?;
     let structure = state.sessions.table_structure(session_id, &table).await.app()?;
-    plan_change(open.engine(), &table, &structure.columns, &change)
+    let masks = grid_masks(&state.store, open.profile.id).await?;
+    plan_change(open.engine(), &table, &structure.columns, masks.as_ref(), &change)
 }
 
 /// Generates CREATE TABLE for the confirm flow.
@@ -357,7 +377,7 @@ mod rows_tests {
     }
 
     fn sql(engine: Engine, columns: &[ColumnInfo], change: RowChange) -> String {
-        plan_change(engine, &table(), columns, &change).unwrap().sql
+        plan_change(engine, &table(), columns, None, &change).unwrap().sql
     }
 
     fn update() -> RowChange {
@@ -379,7 +399,7 @@ mod rows_tests {
         let change = RowChange::Delete {
             keys: vec![vec![cell("a", None), cell("b", Some("x"))]],
         };
-        assert_snapshot!(sql(Engine::Postgres, &unkeyed(), change), @r#"DELETE FROM "s"."t" WHERE ("a" IS NULL AND "b" = 'x')"#);
+        assert_snapshot!(sql(Engine::Postgres, &unkeyed(), change), @r#"DELETE FROM "s"."t" WHERE "a" IS NULL AND "b" = 'x'"#);
     }
 
     #[test]
@@ -438,20 +458,46 @@ mod rows_tests {
             key: vec![cell("a", Some("1")), cell("b", None)],
             values: vec![cell("a", Some("9"))],
         };
-        let planned = plan_change(Engine::Sqlite, &table(), &unkeyed(), &change).unwrap();
+        let planned = plan_change(Engine::Sqlite, &table(), &unkeyed(), None, &change).unwrap();
         assert_snapshot!(planned.sql, @r#"UPDATE "s"."t" SET "a" = '9' WHERE "a" = '1' AND "b" IS NULL"#);
         assert_eq!(planned.warnings.len(), 1);
     }
 
     #[test]
-    fn multi_row_delete_is_one_statement() {
+    fn each_deleted_row_is_its_own_statement() {
         let change = RowChange::Delete {
             keys: vec![
                 vec![cell("a", Some("1")), cell("b", Some("2"))],
                 vec![cell("a", Some("3")), cell("b", Some("4"))],
             ],
         };
-        assert_snapshot!(sql(Engine::MySql, &keyed(), change), @"DELETE FROM `s`.`t` WHERE (`a` = '1' AND `b` = '2') OR (`a` = '3' AND `b` = '4')");
+        let planned = sql(Engine::MySql, &keyed(), change);
+        assert_eq!(
+            planned,
+            "DELETE FROM `s`.`t` WHERE `a` = '1' AND `b` = '2';\nDELETE FROM `s`.`t` WHERE `a` = '3' AND `b` = '4'"
+        );
+        assert_eq!(studio_safety::classify_script(&planned, Engine::MySql).len(), 2);
+    }
+
+    #[test]
+    fn masked_columns_are_neither_written_nor_used_as_keys() {
+        let masks = Masks::default();
+        let columns = vec![
+            column("id", true),
+            column("password", false),
+            column("name", false),
+        ];
+        let write = RowChange::Update {
+            key: vec![cell("id", Some("1"))],
+            values: vec![cell("password", Some("x"))],
+        };
+        assert!(plan_change(Engine::Postgres, &table(), &columns, Some(&masks), &write).is_err());
+        assert!(plan_change(Engine::Postgres, &table(), &columns, None, &write).is_ok());
+        let unkeyed = vec![column("password", false), column("name", false)];
+        let delete = RowChange::Delete {
+            keys: vec![vec![cell("password", Some("***")), cell("name", Some("a"))]],
+        };
+        assert!(plan_change(Engine::Postgres, &table(), &unkeyed, Some(&masks), &delete).is_err());
     }
 
     #[test]
@@ -459,7 +505,7 @@ mod rows_tests {
         let change = RowChange::Delete {
             keys: vec![vec![cell("a", Some("1"))]],
         };
-        assert!(plan_change(Engine::Postgres, &table(), &keyed(), &change).is_err());
+        assert!(plan_change(Engine::Postgres, &table(), &keyed(), None, &change).is_err());
     }
 
     #[test]
@@ -467,11 +513,11 @@ mod rows_tests {
         let unknown = RowChange::Insert {
             values: vec![cell("nope", Some("1"))],
         };
-        assert!(plan_change(Engine::Postgres, &table(), &keyed(), &unknown).is_err());
+        assert!(plan_change(Engine::Postgres, &table(), &keyed(), None, &unknown).is_err());
         let empty = RowChange::Insert { values: vec![] };
-        assert!(plan_change(Engine::Postgres, &table(), &keyed(), &empty).is_err());
+        assert!(plan_change(Engine::Postgres, &table(), &keyed(), None, &empty).is_err());
         let none = RowChange::Delete { keys: vec![] };
-        assert!(plan_change(Engine::Postgres, &table(), &keyed(), &none).is_err());
+        assert!(plan_change(Engine::Postgres, &table(), &keyed(), None, &none).is_err());
     }
 
     fn new_column(name: &str, data_type: &str, primary_key: bool) -> NewColumn {

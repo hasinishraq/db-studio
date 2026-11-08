@@ -26,6 +26,8 @@ import { CreateDatabaseDialog } from '../modals/CreateDatabaseDialog';
 import { CreateTableDialog } from '../modals/CreateTableDialog';
 import { inOrder, loadCollapsed, loadOrder, moveTo, saveCollapsed, saveOrder } from '../../lib/explorerPrefs';
 import { Button, ErrorNote, Input } from '../ui';
+import { useContextMenu, type MenuItem } from '../ui/ContextMenu';
+import { useNamespace } from '../../lib/useNamespace';
 
 export function matches(text: string, search: string): boolean {
   return text.toLowerCase().includes(search.trim().toLowerCase());
@@ -62,6 +64,7 @@ function SchemaNode({
   chosen = false,
   onChoose,
   nested = false,
+  menuItems = [],
 }: {
   session: SessionId;
   schema: string;
@@ -70,6 +73,8 @@ function SchemaNode({
   chosen?: boolean;
   onChoose?: () => void;
   nested?: boolean;
+  /** Choosing and remembering, from the parent; New table and Diagram are added here. */
+  menuItems?: MenuItem[];
 }) {
   // Under a PostgreSQL database the schemas sit one level deeper.
   const indent = nested ? 'pl-3' : 'pl-5';
@@ -85,11 +90,20 @@ function SchemaNode({
   });
   const shown = objects.filter((object) => matches(object.name, search));
   const Chevron = expanded || searching ? ChevronDown : ChevronRight;
+  const openDiagram = () =>
+    openTab({ id: `er:${profile.id}:${schema}`, kind: 'er', title: `${schema} diagram`, profileId: profile.id, schema });
+  const { triggers, menu } = useContextMenu(`${schema} actions`, () => [
+    ...menuItems,
+    { label: 'New table…', onSelect: () => setCreating(true), separated: menuItems.length > 0 },
+    { label: 'Diagram', onSelect: openDiagram },
+  ]);
   return (
     <div>
-      <div className={`group flex items-center gap-1 pr-1 ${chosen ? 'here' : 'hover:bg-raised'}`}>
+      <div className={`group flex items-center gap-1 pr-1 ${chosen ? 'here' : 'hover:bg-raised'}`} onContextMenu={triggers.onContextMenu}>
         <button
           type="button"
+          onKeyDown={triggers.onKeyDown}
+          aria-haspopup="menu"
           aria-expanded={expanded}
           aria-current={chosen || undefined}
           data-level={nested ? 'schema' : 'database'}
@@ -112,9 +126,7 @@ function SchemaNode({
           tone="quiet"
           className="p-1"
           title={`Diagram of ${schema}`}
-          onClick={() =>
-            openTab({ id: `er:${profile.id}:${schema}`, kind: 'er', title: `${schema} diagram`, profileId: profile.id, schema })
-          }
+          onClick={openDiagram}
         >
           <Network size={14} aria-hidden />
           <span className="sr-only">Diagram</span>
@@ -130,6 +142,56 @@ function SchemaNode({
         </div>
       )}
       {creating && <CreateTableDialog profileId={profile.id} schema={schema} onClose={() => setCreating(false)} />}
+      {menu}
+    </div>
+  );
+}
+
+/** A PostgreSQL database row. The one in use expands to its schemas. */
+function DatabaseRow({
+  database,
+  current,
+  open,
+  onToggle,
+  onChoose,
+  menuItems,
+  children,
+}: {
+  database: string;
+  current: boolean;
+  open: boolean;
+  onToggle: () => void;
+  onChoose: () => void;
+  menuItems: MenuItem[];
+  children: ReactNode;
+}) {
+  const { triggers, menu } = useContextMenu(`${database} actions`, () => menuItems);
+  return (
+    <div>
+      <div className={`flex items-center pr-2 ${current ? 'here' : 'hover:bg-raised'}`} onContextMenu={triggers.onContextMenu}>
+        <button
+          type="button"
+          aria-current={current || undefined}
+          data-level="database"
+          aria-haspopup="menu"
+          aria-expanded={current ? open : undefined}
+          title={current ? (open ? 'Collapse' : 'Expand') : 'Use this database'}
+          onKeyDown={triggers.onKeyDown}
+          onClick={() => (current ? onToggle() : onChoose())}
+          className={`flex min-w-0 flex-1 items-center gap-1 py-1 pl-3 text-left text-sm ${current ? 'font-bold' : ''}`}
+        >
+          {current && open ? (
+            <ChevronDown size={13} aria-hidden className="shrink-0 text-muted" />
+          ) : (
+            <ChevronRight size={13} aria-hidden className="shrink-0 text-muted" />
+          )}
+          <Database size={13} aria-hidden className="shrink-0 text-muted" />
+          <span className="truncate">{database}</span>
+        </button>
+        {current && <span className="shrink-0 text-xs text-muted">in use</span>}
+      </div>
+      {current && open && <div className="ml-5 border-l border-line">{children}</div>}
+      {menu}
     </div>
   );
 }
@@ -149,7 +211,7 @@ function ConnectionNode({
   onToggle: () => void;
   grip: ReactNode;
 }) {
-  const { sessions, setSession, openTab, tabs, closeTab } = useStudio();
+  const { sessions, setSession, openTab } = useStudio();
   const client = useQueryClient();
   const session = sessions[profile.id];
   const current = session?.database ?? null;
@@ -180,39 +242,79 @@ function ConnectionNode({
     }
   }, [session, profile.engine, profile.id, current, schemas, schemasLoaded, setSession]);
 
-  const choose = async (database: string) => {
-    if (!session || database === current) return;
+  const namespace = useNamespace(profile);
+  /** Runs a step and shows its error under the connection. */
+  const attempt = async (step: () => Promise<void>) => {
     setError(null);
     try {
-      const info = await api.switchDatabase(session.sessionId, database);
-      // These tabs name objects in the database just left.
-      if (separateDatabases) {
-        tabs
-          .filter((tab) => (tab.kind === 'table' || tab.kind === 'er') && tab.profileId === profile.id)
-          .forEach((tab) => closeTab(tab.id));
-      }
-      setSession(profile.id, info);
+      await step();
     } catch (e) {
-      setError(
-        e instanceof ApiError && e.code === 'DirtyTransaction'
-          ? 'Commit or roll back first. Then change database.'
-          : errorMessage(e),
-      );
+      setError(errorMessage(e));
     }
   };
+  const choose = (database: string) => attempt(() => namespace.chooseDatabase(database));
+  const chooseSchema = (schema: string) => attempt(() => namespace.chooseSchema(schema));
+  const newQuery = () =>
+    openTab({ id: newId(), kind: 'sql', title: 'New query', profileId: profile.id, draftId: null, sql: '' });
 
-  const chooseSchema = async (schema: string) => {
-    if (!session || schema === session.schema) return;
-    setError(null);
-    try {
-      setSession(profile.id, await api.switchSchema(session.sessionId, schema));
-    } catch (e) {
-      setError(
-        e instanceof ApiError && e.code === 'DirtyTransaction'
-          ? 'Commit or roll back first. Then change schema.'
-          : errorMessage(e),
-      );
-    }
+  /** The menu of a database: PostgreSQL's databases, and MySQL's (shown as schemas). */
+  const databaseMenu = (database: string): MenuItem[] => {
+    const inUse = database === current;
+    const remembered = profile.database === database && !profile.defaultSchema;
+    return [
+      { label: inUse ? 'In use' : 'Use as default', disabled: inUse, onSelect: () => void choose(database) },
+      {
+        label: 'Use as default and remember',
+        disabled: remembered && inUse,
+        onSelect: () =>
+          void attempt(async () => {
+            await namespace.chooseDatabase(database);
+            await namespace.remember(database, null);
+          }),
+      },
+      ...(profile.database === database
+        ? [{ label: 'Forget remembered default', onSelect: () => void attempt(() => namespace.remember(null, null)) }]
+        : []),
+      {
+        label: 'New query here',
+        separated: true,
+        onSelect: () =>
+          void attempt(async () => {
+            await namespace.chooseDatabase(database);
+            newQuery();
+          }),
+      },
+    ];
+  };
+
+  /** The menu of a PostgreSQL schema inside the database in use. */
+  const schemaMenu = (schema: string): MenuItem[] => {
+    const inUse = schema === session?.schema;
+    const remembered = profile.database === current && profile.defaultSchema === schema;
+    return [
+      { label: inUse ? 'In use' : 'Use as default', disabled: inUse, onSelect: () => void chooseSchema(schema) },
+      {
+        label: 'Use as default and remember',
+        disabled: remembered && inUse,
+        onSelect: () =>
+          void attempt(async () => {
+            await namespace.chooseSchema(schema);
+            await namespace.remember(current, schema);
+          }),
+      },
+      ...(remembered
+        ? [{ label: 'Forget remembered schema', onSelect: () => void attempt(() => namespace.remember(current, null)) }]
+        : []),
+      {
+        label: 'New query here',
+        separated: true,
+        onSelect: () =>
+          void attempt(async () => {
+            await namespace.chooseSchema(schema);
+            newQuery();
+          }),
+      },
+    ];
   };
 
   const schemaNodes = (selectable: boolean, nested = false) =>
@@ -227,6 +329,7 @@ function ConnectionNode({
         chosen={selectable && schema.name === (nested ? session.schema : current)}
         onChoose={selectable ? () => void (nested ? chooseSchema(schema.name) : choose(schema.name)) : undefined}
         nested={nested}
+        menuItems={selectable ? (nested ? schemaMenu(schema.name) : databaseMenu(schema.name)) : []}
       />
     ));
 
@@ -352,39 +455,20 @@ function ConnectionNode({
         ? null
         : separateDatabases && databases.length > 0
         ? databases.map((database) => (
-            <div key={database}>
-              <div className={`flex items-center pr-2 ${database === current ? 'here' : 'hover:bg-raised'}`}>
-                <button
-                  type="button"
-                  aria-current={database === current || undefined}
-                  data-level="database"
-                  aria-expanded={database === current ? databaseOpen : undefined}
-                  title={database === current ? (databaseOpen ? 'Collapse' : 'Expand') : 'Use this database'}
-                  onClick={() => {
-                    if (database === current) setDatabaseOpen(!databaseOpen);
-                    else {
-                      setDatabaseOpen(true);
-                      void choose(database);
-                    }
-                  }}
-                  className={`flex min-w-0 flex-1 items-center gap-1 py-1 pl-3 text-left text-sm ${
-                    database === current ? 'font-bold' : ''
-                  }`}
-                >
-                  {database === current && databaseOpen ? (
-                    <ChevronDown size={13} aria-hidden className="shrink-0 text-muted" />
-                  ) : (
-                    <ChevronRight size={13} aria-hidden className="shrink-0 text-muted" />
-                  )}
-                  <Database size={13} aria-hidden className="shrink-0 text-muted" />
-                  <span className="truncate">{database}</span>
-                </button>
-                {database === current && <span className="shrink-0 text-xs text-muted">in use</span>}
-              </div>
-              {database === current && databaseOpen && (
-                <div className="ml-5 border-l border-line">{schemaNodes(true, true)}</div>
-              )}
-            </div>
+            <DatabaseRow
+              key={database}
+              database={database}
+              current={database === current}
+              open={databaseOpen}
+              onToggle={() => setDatabaseOpen(!databaseOpen)}
+              onChoose={() => {
+                setDatabaseOpen(true);
+                void choose(database);
+              }}
+              menuItems={databaseMenu(database)}
+            >
+              {schemaNodes(true, true)}
+            </DatabaseRow>
           ))
         : schemaNodes(profile.engine === 'MySql')}
     </div>

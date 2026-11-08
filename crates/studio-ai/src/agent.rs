@@ -1,5 +1,6 @@
 //! The step loop and the review gate.
 
+use crate::chart;
 use crate::describe::describe;
 use crate::hub::{AgentHub, Decision};
 use crate::limits::{Limits, MAX_STEPS};
@@ -16,8 +17,8 @@ use studio_safety::{ai_auto_allowed, classify_script, Risk};
 use studio_session::{AiQueryResult, SessionError, SessionManager};
 use studio_store::Store;
 use studio_types::{
-    AiEvent, AiPolicy, AiSendRequest, ApprovalToken, ConnectionProfile, Engine as DbEngine, Environment,
-    QueryId, QueryRecord, SchemaRef, SessionId, TableRef, TurnId,
+    AiEvent, AiPolicy, AiSendRequest, ApprovalToken, ChartSpec, ConnectionProfile, Engine as DbEngine,
+    Environment, QueryId, QueryRecord, SchemaRef, SessionId, TableRef, TurnId,
 };
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -144,10 +145,52 @@ impl Engine {
             .map(|open| open.profile.clone())
     }
 
+    /// The schemas the assistant works in: those of the database in use, never the whole server.
+    /// On MySQL every database is a schema, so only the one in use is kept; with none in use the
+    /// list is empty. A PostgreSQL session is tied to one database; its schema in use comes first.
+    async fn scope(&self, session: SessionId) -> Result<Vec<SchemaRef>, String> {
+        let engine = self
+            .sessions
+            .get(session)
+            .map(|open| open.engine())
+            .map_err(|e| e.to_string())?;
+        let all = self
+            .sessions
+            .list_schemas(session)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(match engine {
+            DbEngine::MySql => match self.sessions.current_database(session).await {
+                Some(database) => all.into_iter().filter(|s| s.name == database).collect(),
+                None => Vec::new(),
+            },
+            DbEngine::Postgres => {
+                let chosen = self.sessions.current_schema(session).await;
+                let (mut first, rest): (Vec<_>, Vec<_>) =
+                    all.into_iter().partition(|s| Some(&s.name) == chosen.as_ref());
+                first.extend(rest);
+                first
+            }
+            DbEngine::Sqlite => all,
+        })
+    }
+
+    /// Tells the model where it works and lists the tables there.
     async fn schema_text(&self, session: SessionId) -> (String, Vec<KnownTable>) {
         let mut text = String::new();
         let mut tables: Vec<KnownTable> = Vec::new();
-        let Ok(schemas) = self.sessions.list_schemas(session).await else {
+        let engine = self.sessions.get(session).map(|open| open.engine()).ok();
+        let database = self.sessions.current_database(session).await;
+        if engine == Some(DbEngine::MySql) && database.is_none() {
+            let names = self.sessions.list_databases(session).await.unwrap_or_default();
+            text.push_str(&format!(
+                "No database is in use, so no tables are listed. Databases on this server: {}.\n\
+                 Ask the user which one to work in. They can pick it in this chat or in the side panel.\n",
+                names.join(", ")
+            ));
+            return (text, tables);
+        }
+        let Ok(schemas) = self.scope(session).await else {
             return (text, tables);
         };
         for schema in schemas {
@@ -180,12 +223,18 @@ impl Engine {
         if !text.is_empty() {
             text.push_str(")\n");
         }
-        if let Some(database) = self.sessions.current_database(session).await {
+        if let Some(database) = database {
             let schema = match self.sessions.current_schema(session).await {
                 Some(schema) => format!(", schema {schema}"),
                 None => String::new(),
             };
-            text.insert_str(0, &format!("Current database: {database}{schema}\n"));
+            text.insert_str(
+                0,
+                &format!(
+                    "Database in use: {database}{schema}. Work only in this database: write unqualified \
+                     table names, and do not read or change other databases on the server.\n"
+                ),
+            );
         }
         (text, tables)
     }
@@ -223,8 +272,17 @@ impl Engine {
         };
 
         let title: String = req.text.chars().take(60).collect();
+        let database = match req.session_id {
+            Some(id) if profile.is_some() => self.sessions.current_database(id).await,
+            _ => None,
+        };
         self.store
-            .ensure_conversation(req.conversation_id, profile.as_ref().map(|p| p.id), &title)
+            .ensure_conversation(
+                req.conversation_id,
+                profile.as_ref().map(|p| p.id),
+                database.as_deref(),
+                &title,
+            )
             .await
             .map_err(|e| AiError::Memory(e.to_string()))?;
         let (history, summary) = memory::load(&self.store, req.conversation_id).await?;
@@ -379,7 +437,7 @@ impl Engine {
         let parsed_sql = || serde_json::from_str::<SqlArgs>(&call.args_json);
         match call.name.as_str() {
             tools::RUN_SQL => match parsed_sql() {
-                Ok(args) => self.handle_run_sql(turn, args.sql).await,
+                Ok(args) => self.handle_run_sql(turn, args.sql, args.chart).await,
                 Err(_) => "The arguments were invalid. Pass {\"sql\": \"...\"}.".to_owned(),
             },
             tools::EXPLAIN_QUERY => match parsed_sql() {
@@ -458,7 +516,10 @@ impl Engine {
         };
         let schemas = match args.schema {
             Some(name) => vec![SchemaRef { name }],
-            None => match self.sessions.list_schemas(session).await {
+            None => match self.scope(session).await {
+                Ok(schemas) if schemas.is_empty() => {
+                    return "No database is in use. Ask the user which database to work in.".to_owned()
+                }
                 Ok(schemas) => schemas,
                 Err(error) => return format!("Could not list schemas: {error}"),
             },
@@ -475,10 +536,12 @@ impl Engine {
 
     /// The gate. Nothing the model sends can skip it: the only statements that run unattended are
     /// those `studio-safety` allows, and anything else waits on a oneshot only a click can complete.
-    async fn handle_run_sql(&self, turn: &mut Turn, sql: String) -> String {
+    async fn handle_run_sql(&self, turn: &mut Turn, sql: String, chart: Option<serde_json::Value>) -> String {
         let (Some(session), Some(dialect)) = (turn.session, turn.dialect) else {
             return no_connection();
         };
+        // A bad chart request never stops the query; the model is told why it was dropped.
+        let chart = chart.map(|value| chart::parse(&value));
         if let Err(message) = turn.limits.admit(&sql) {
             return message;
         }
@@ -513,7 +576,7 @@ impl Engine {
             Some(token) => self.sessions.run_ai_approved(session, &sql, id, &token).await,
             None => self.sessions.run_ai_read(session, &sql, id).await,
         };
-        self.finish_query(turn, id, &sql, result).await
+        self.finish_query(turn, id, &sql, result, chart).await
     }
 
     /// `Some` when approved, carrying a token unless the statement is an unattended read.
@@ -544,10 +607,34 @@ impl Engine {
         id: QueryId,
         sql: &str,
         result: Result<AiQueryResult, SessionError>,
+        chart: Option<Result<ChartSpec, String>>,
     ) -> String {
         match result {
             Ok(done) => {
-                let (text, exposed) = describe(&done, turn.share_rows, &turn.masks);
+                let (mut text, exposed) = describe(&done, turn.share_rows, &turn.masks);
+                let chart = match chart {
+                    Some(Ok(spec)) if done.rows_affected.is_none() => {
+                        match chart::check(&spec, &done.columns) {
+                            Ok(()) => {
+                                text.push_str(&format!("\n{}", chart::note(&spec)));
+                                Some(spec)
+                            }
+                            Err(why) => {
+                                text.push_str(&format!("\nNo chart was drawn: {why}."));
+                                None
+                            }
+                        }
+                    }
+                    Some(Ok(_)) => {
+                        text.push_str("\nNo chart was drawn: the statement returned no rows to plot.");
+                        None
+                    }
+                    Some(Err(why)) => {
+                        text.push_str(&format!("\nNo chart was drawn: {why}."));
+                        None
+                    }
+                    None => None,
+                };
                 turn.exposed.extend(exposed);
                 let count = done.rows_affected.unwrap_or(done.rows.len() as u64);
                 turn.record(sql, "ok", i64::try_from(count).ok());
@@ -558,6 +645,7 @@ impl Engine {
                     rows_affected: done.rows_affected,
                     truncated: done.truncated,
                     elapsed_ms: done.elapsed_ms,
+                    chart,
                 })
                 .await;
                 text

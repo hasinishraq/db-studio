@@ -36,11 +36,12 @@ impl Store {
         sqlx::query(
             "INSERT INTO profiles (id, name, engine, host, port, database, username, tls_mode, ca_cert_path,
                client_cert_path, client_key_path, ssh_json, environment, read_only, ai_policy, color,
-               created_at, updated_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?17)
+               created_at, updated_at, default_schema)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?17,?18)
              ON CONFLICT(id) DO UPDATE SET name=?2, engine=?3, host=?4, port=?5, database=?6, username=?7,
                tls_mode=?8, ca_cert_path=?9, client_cert_path=?10, client_key_path=?11, ssh_json=?12,
-               environment=?13, read_only=?14, ai_policy=?15, color=?16, updated_at=?17",
+               environment=?13, read_only=?14, ai_policy=?15, color=?16, updated_at=?17,
+               default_schema=?18",
         )
         .bind(p.id.to_string())
         .bind(p.name.clone())
@@ -59,6 +60,7 @@ impl Store {
         .bind(enum_text(&p.ai_policy)?)
         .bind(p.color.clone())
         .bind(now)
+        .bind(p.default_schema.clone())
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -116,6 +118,7 @@ fn profile_from_row(row: &SqliteRow) -> Result<ConnectionProfile, StoreError> {
         read_only: row.try_get("read_only")?,
         ai_policy: parse_enum(&row.try_get::<String, _>("ai_policy")?)?,
         color: row.try_get("color")?,
+        default_schema: row.try_get("default_schema")?,
         has_password: false,
     })
 }

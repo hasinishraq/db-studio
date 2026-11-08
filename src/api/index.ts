@@ -1,6 +1,8 @@
 import { commands } from '../bindings';
 import type {
   AuditQuery,
+  ChangeSet,
+  DiagramFormat,
   ConnectionProfile,
   ConversationId,
   Draft,
@@ -63,6 +65,13 @@ export const api = {
   txState: (session: SessionId) => unwrap(commands.txState(session)),
   planRowChange: (session: SessionId, table: TableRef, change: RowChange) =>
     unwrap(commands.planRowChange(session, table, change)),
+  exportDiagram: (svg: string, format: DiagramFormat, name: string) =>
+    unwrap(commands.exportDiagram(svg, format, name)),
+  gridEditInfo: (session: SessionId, table: TableRef) => unwrap(commands.gridEditInfo(session, table)),
+  planRowChanges: (session: SessionId, table: TableRef, changes: ChangeSet) =>
+    unwrap(commands.planRowChanges(session, table, changes)),
+  runRowChanges: (session: SessionId, sql: string, approval: string, runId: string) =>
+    unwrap(commands.runRowChanges(session, sql, approval, runId)),
   planCreateDatabase: (session: SessionId, name: string, charset: string | null) =>
     unwrap(commands.planCreateDatabase(session, name, charset)),
   planCreateTable: (session: SessionId, table: TableRef, columns: NewColumn[]) =>
@@ -84,6 +93,8 @@ export const api = {
   listDatabases: (session: SessionId) => unwrap(commands.listDatabases(session)),
   switchDatabase: (session: SessionId, database: string) => unwrap(commands.useDatabase(session, database)),
   switchSchema: (session: SessionId, schema: string) => unwrap(commands.useSchema(session, schema)),
+  rememberDefault: (profile: ProfileId, database: string | null, schema: string | null) =>
+    unwrap(commands.rememberDefault(profile, database, schema)),
   exportSchema: (session: SessionId, schema: string) => unwrap(commands.exportSchema(session, schema)),
   openSchemaFile: () => unwrap(commands.openSchemaFile()),
   outlineSchema: (sql: string, engine: Engine) => unwrap(commands.outlineSchema(sql, engine)),

@@ -75,6 +75,9 @@ fn build_opts(cfg: &ConnectConfig) -> Result<OptsBuilder, DbError> {
         .pass(password)
         .db_name(database)
         .prefer_socket(false)
+        // Report rows matched, not rows changed, as PostgreSQL and SQLite do. The grid's door
+        // needs exactly one row per change, and an UPDATE to the same value changes none.
+        .client_found_rows(true)
         .tcp_keepalive(Some(Duration::from_secs(60)))
         .setup(setup)
         .pool_opts(PoolOpts::default().with_constraints(constraints))

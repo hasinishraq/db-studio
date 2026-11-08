@@ -5,20 +5,24 @@ use sqlx::Row;
 use studio_types::{ConversationId, ConversationSummary, ProfileId, QueryRecord, TurnId, TurnRecord};
 
 impl Store {
-    /// Creates the conversation if it does not exist.
+    /// Creates the conversation if it does not exist, and records where it now works. The title
+    /// is kept once set.
     pub async fn ensure_conversation(
         &self,
         id: ConversationId,
         profile: Option<ProfileId>,
+        database: Option<&str>,
         title: &str,
     ) -> Result<(), StoreError> {
         sqlx::query(
-            "INSERT OR IGNORE INTO conversations (id, profile_id, title, updated_at) VALUES (?1,?2,?3,?4)",
+            "INSERT INTO conversations (id, profile_id, title, updated_at, database) VALUES (?1,?2,?3,?4,?5)
+             ON CONFLICT(id) DO UPDATE SET profile_id = ?2, database = ?5",
         )
         .bind(id.to_string())
         .bind(profile.map(|p| p.to_string()))
         .bind(title.to_owned())
         .bind(now_ms())
+        .bind(database.map(str::to_owned))
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -26,15 +30,21 @@ impl Store {
 
     /// Lists conversations, newest first.
     pub async fn list_conversations(&self) -> Result<Vec<ConversationSummary>, StoreError> {
-        let rows = sqlx::query("SELECT id, title, updated_at FROM conversations ORDER BY updated_at DESC")
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query(
+            "SELECT c.id, c.title, c.updated_at, c.database, p.name AS connection
+             FROM conversations c LEFT JOIN profiles p ON p.id = c.profile_id
+             ORDER BY c.updated_at DESC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
         rows.iter()
             .map(|row| {
                 Ok(ConversationSummary {
                     id: parse_id(&row.try_get::<String, _>("id")?)?,
                     title: row.try_get("title")?,
                     updated_at: row.try_get("updated_at")?,
+                    connection: row.try_get("connection")?,
+                    database: row.try_get("database")?,
                 })
             })
             .collect()

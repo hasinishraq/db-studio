@@ -16,6 +16,11 @@ ignore = [
   { id = "RUSTSEC-2026-0370", reason = "transitive through tauri-plugin-opener; no advisory of a flaw" },
   { id = "RUSTSEC-2026-0371", reason = "transitive through tauri-plugin-opener; no advisory of a flaw" },
   { id = "RUSTSEC-2026-0372", reason = "transitive through tauri-plugin-opener; no advisory of a flaw" },
+  # rustybuzz and ttf-parser: under resvg and svg2pdf, for diagram export. Unmaintained, not
+  # vulnerable, and no replacement release. They only read the four fonts bundled in the app;
+  # the diagram SVG cannot load fonts or files.
+  { id = "RUSTSEC-2026-0206", reason = "diagram export; parses only bundled fonts; no advisory of a flaw" },
+  { id = "RUSTSEC-2026-0192", reason = "diagram export; parses only bundled fonts; no advisory of a flaw" },
 ]
 
 [licenses]

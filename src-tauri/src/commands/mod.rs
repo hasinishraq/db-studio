@@ -2,7 +2,9 @@
 
 pub mod ai;
 pub mod audit;
+pub mod diagram;
 pub mod drafts;
+pub mod grid;
 pub mod history;
 pub mod profiles;
 pub mod query;

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Maximize, Minus, Plus, Upload } from 'lucide-react';
+import type { MutableRefObject, RefObject } from 'react';
 import { api, ApiError, errorMessage } from '../../api';
 import { runFlow } from '../../api/run';
-import type { SchemaFile, SchemaOutline, TableStructure } from '../../bindings';
+import type { DiagramFormat, SchemaFile, SchemaOutline, TableStructure } from '../../bindings';
 import { newId, useStudio, type Tab } from '../../context/Studio';
 import {
   arrange,
@@ -21,9 +22,10 @@ import {
   type Positions,
   type View,
 } from '../../lib/diagram';
+import { diagramBounds, standaloneSvg } from '../../lib/diagramExport';
 import { ResultStore } from '../../lib/resultStore';
 import { spanText } from '../../lib/sqlText';
-import { Button, ErrorNote } from '../ui';
+import { Button, ErrorNote, Select } from '../ui';
 import { useRunLog, WithLog } from './RunLog';
 
 type ErTab = Extract<Tab, { kind: 'er' }>;
@@ -106,15 +108,21 @@ function Canvas({
   fitRequest,
   onZoom,
   zoomRequest,
+  drawingRef,
+  positionsRef,
 }: {
   tables: DiagramTable[];
   label: string;
   fitRequest: number;
   zoomRequest: { factor: number; id: number };
   onZoom: (k: number) => void;
+  /** The drawn content, for saving as an image. */
+  drawingRef: RefObject<SVGGElement | null>;
+  positionsRef: MutableRefObject<Positions>;
 }) {
   const frame = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Positions>({});
+  positionsRef.current = positions;
   const [view, setView] = useState<View>({ x: 24, y: 24, k: 1 });
   const drag = useRef<Drag | null>(null);
 
@@ -197,7 +205,7 @@ function Canvas({
       onPointerDown={(event) => startDrag({ kind: 'pan', from: { x: event.clientX, y: event.clientY }, view })}
     >
       <svg width="100%" height="100%" role="img" aria-label={label}>
-        <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
+        <g ref={drawingRef} transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
           {edges(tables, positions).map((edge) => (
             <path key={edge.id} d={edge.path} fill="none" stroke="var(--muted)" strokeWidth={1.5} />
           ))}
@@ -223,6 +231,9 @@ export function ErDiagram({ tab }: { tab: ErTab }) {
   const [zoom, setZoom] = useState(1);
   const [fitRequest, setFitRequest] = useState(0);
   const [zoomRequest, setZoomRequest] = useState({ factor: 1, id: 0 });
+  const [saving, setSaving] = useState(false);
+  const drawingRef = useRef<SVGGElement>(null);
+  const positionsRef = useRef<Positions>({});
 
   const live = useQuery({
     queryKey: ['schema', tab.profileId, 'er', session, tab.schema],
@@ -244,6 +255,24 @@ export function ErDiagram({ tab }: { tab: ErTab }) {
       log.add('info', `Exported the structure of ${tab.schema}: ${objects} tables and views`);
     } catch (e) {
       if (!(e instanceof ApiError && e.code === 'Cancelled')) setError(errorMessage(e));
+    }
+  };
+
+  /** Rust draws the image and asks where to save it. */
+  const exportImage = async (format: DiagramFormat) => {
+    const drawing = drawingRef.current;
+    const bounds = diagramBounds(tables, positionsRef.current);
+    if (!drawing || !bounds) return;
+    setError(null);
+    setSaving(true);
+    try {
+      const name = file ? file.source.name.replace(/\.sql$/i, '') : tab.schema;
+      await api.exportDiagram(standaloneSvg(drawing, bounds), format, name);
+      log.add('info', `Saved the diagram of ${name} as ${format === 'Jpeg' ? 'JPEG' : format.toUpperCase()}`);
+    } catch (e) {
+      if (!(e instanceof ApiError && e.code === 'Cancelled')) setError(errorMessage(e));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -312,6 +341,18 @@ export function ErDiagram({ tab }: { tab: ErTab }) {
         <Button disabled={!session} onClick={() => void importSchema()}>
           <Upload size={13} aria-hidden /> Import schema
         </Button>
+        <Select
+          aria-label="Export image"
+          className="w-36"
+          value=""
+          disabled={tables.length === 0 || saving}
+          onChange={(e) => e.target.value && void exportImage(e.target.value as DiagramFormat)}
+        >
+          <option value="">Export image</option>
+          <option value="Png">PNG image</option>
+          <option value="Jpeg">JPEG image</option>
+          <option value="Pdf">PDF document</option>
+        </Select>
         <span className="ml-auto flex items-center gap-1">
           <Button tone="quiet" aria-label="Zoom out" onClick={() => zoomBy(0.8)}>
             <Minus size={13} aria-hidden />
@@ -352,6 +393,8 @@ export function ErDiagram({ tab }: { tab: ErTab }) {
           fitRequest={fitRequest}
           zoomRequest={zoomRequest}
           onZoom={setZoom}
+          drawingRef={drawingRef}
+          positionsRef={positionsRef}
         />
       </WithLog>
     </div>

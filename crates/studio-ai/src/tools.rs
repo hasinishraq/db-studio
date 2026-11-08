@@ -19,6 +19,9 @@ pub const LIST_TABLES: &str = "list_tables";
 pub struct SqlArgs {
     /// The statement.
     pub sql: String,
+    /// A chart request, read by [`crate::chart::parse`]. Only `run_sql` uses it.
+    #[serde(default)]
+    pub chart: Option<serde_json::Value>,
 }
 
 /// Arguments of `describe_table`.
@@ -48,9 +51,16 @@ pub fn specs() -> Vec<ToolSpec> {
         ToolSpec {
             name: RUN_SQL.to_owned(),
             description: "Run one SQL statement. Reads usually run at once; anything else waits for \
-                          the user to approve it."
+                          the user to approve it. Pass chart to show a read's result as a chart."
                 .to_owned(),
-            parameters: sql.clone(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "sql": { "type": "string", "description": "One SQL statement" },
+                    "chart": crate::chart::schema()
+                },
+                "required": ["sql"]
+            }),
         },
         ToolSpec {
             name: DESCRIBE_TABLE.to_owned(),

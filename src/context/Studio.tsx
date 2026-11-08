@@ -4,6 +4,7 @@ import { api } from '../api';
 import type { Confirm, ConfirmRequest, RunTarget } from '../api/run';
 import type { ConnectionProfile, ProfileId, SessionInfo, TableRef } from '../bindings';
 import { ConfirmDialog } from '../components/modals/ConfirmDialog';
+import { Button, Modal } from '../components/ui';
 
 export type Tab =
   | { id: string; kind: 'sql'; title: string; profileId: ProfileId | null; draftId: string | null; sql: string }
@@ -20,7 +21,10 @@ interface StudioValue {
   tabs: Tab[];
   activeId: string | null;
   openTab: (tab: Tab) => void;
-  closeTab: (id: string) => void;
+  /** Closes a tab. One with unsaved changes asks first, unless `force` is set. */
+  closeTab: (id: string, force?: boolean) => void;
+  /** A tab reports whether it holds changes that would be lost on close. */
+  setUnsaved: (id: string, unsaved: boolean) => void;
   activate: (id: string) => void;
   updateTab: (id: string, change: Partial<Tab>) => void;
   activeProfile: ConnectionProfile | null;
@@ -66,7 +70,20 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setActiveId(tab.id);
   }, []);
 
-  const closeTab = useCallback((id: string) => {
+  const unsaved = useRef<Set<string>>(new Set());
+  const [closing, setClosing] = useState<string | null>(null);
+
+  const setUnsaved = useCallback((id: string, value: boolean) => {
+    if (value) unsaved.current.add(id);
+    else unsaved.current.delete(id);
+  }, []);
+
+  const closeTab = useCallback((id: string, force = false) => {
+    if (!force && unsaved.current.has(id)) {
+      setClosing(id);
+      return;
+    }
+    unsaved.current.delete(id);
     setTabs((current) => {
       const index = current.findIndex((t) => t.id === id);
       const next = current.filter((t) => t.id !== id);
@@ -118,6 +135,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     activeId,
     openTab,
     closeTab,
+    setUnsaved,
     activate: setActiveId,
     updateTab,
     activeProfile,
@@ -129,6 +147,27 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     <Context.Provider value={value}>
       {children}
       {pending && <ConfirmDialog request={pending} onSettle={settle} />}
+      {closing && (
+        <Modal title="Discard unsaved changes?" onClose={() => setClosing(null)}>
+          <p className="text-sm">
+            {tabs.find((t) => t.id === closing)?.title ?? 'This tab'} has edits that are not saved. Closing it
+            throws them away.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button onClick={() => setClosing(null)}>Keep editing</Button>
+            <Button
+              tone="danger"
+              onClick={() => {
+                const id = closing;
+                setClosing(null);
+                closeTab(id, true);
+              }}
+            >
+              Discard and close
+            </Button>
+          </div>
+        </Modal>
+      )}
     </Context.Provider>
   );
 }

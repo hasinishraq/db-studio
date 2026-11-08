@@ -137,6 +137,9 @@ pub struct ConnectionProfile {
     pub ai_policy: AiPolicy,
     /// Optional accent colour.
     pub color: Option<String>,
+    /// PostgreSQL: the schema to use on connect, in `database`. Ignored if it no longer exists.
+    #[serde(default)]
+    pub default_schema: Option<String>,
     /// Whether a password is stored. Set by the store.
     #[serde(default)]
     pub has_password: bool,

@@ -11,6 +11,8 @@ export const commands = {
 	saveProfile: (profile: ConnectionProfile, password: string | null) => typedError<ConnectionProfile, AppError>(__TAURI_INVOKE("save_profile", { profile, password })),
 	/**  Deletes a profile and its secrets. */
 	deleteProfile: (id: ProfileId) => typedError<null, AppError>(__TAURI_INVOKE("delete_profile", { id })),
+	/**  Remembers, or forgets, the database and schema a connection opens on. */
+	rememberDefault: (profileId: ProfileId, database: string | null, schema: string | null) => typedError<ConnectionProfile, AppError>(__TAURI_INVOKE("remember_default", { profileId, database, schema })),
 	/**  Stores a password, passphrase or API key. */
 	setSecret: (target: SecretTarget, value: string) => typedError<null, AppError>(__TAURI_INVOKE("set_secret", { target, value })),
 	/**  Removes a password, passphrase or API key. */
@@ -73,12 +75,23 @@ export const commands = {
 	settingsSet: (settings: Settings) => typedError<null, AppError>(__TAURI_INVOKE("settings_set", { settings })),
 	/**  Turns a grid edit into reviewed SQL. */
 	planRowChange: (sessionId: SessionId, table: TableRef, change: RowChange) => typedError<PlannedSql, AppError>(__TAURI_INVOKE("plan_row_change", { sessionId, table, change })),
+	/**  What the grid may edit on a table. */
+	gridEditInfo: (sessionId: SessionId, table: TableRef) => typedError<GridEditInfo, AppError>(__TAURI_INVOKE("grid_edit_info", { sessionId, table })),
+	/**  Turns the pending grid edits into SQL for review. */
+	planRowChanges: (sessionId: SessionId, table: TableRef, changes: ChangeSet) => typedError<PlannedSql, AppError>(__TAURI_INVOKE("plan_row_changes", { sessionId, table, changes })),
+	/**
+	 *  Runs reviewed grid SQL all or nothing. Needs a token minted by `approve_query` for the grid.
+	 *  Returns how many changes were saved.
+	 */
+	runRowChanges: (sessionId: SessionId, sql: string, approval: ApprovalToken, runId: RunId) => typedError<number, AppError>(__TAURI_INVOKE("run_row_changes", { sessionId, sql, approval, runId })),
 	/**  Generates CREATE TABLE for the confirm flow. */
 	planCreateTable: (sessionId: SessionId, table: TableRef, columns: NewColumn[]) => typedError<PlannedSql, AppError>(__TAURI_INVOKE("plan_create_table", { sessionId, table, columns })),
 	/**  Generates CREATE DATABASE for the confirm flow. */
 	planCreateDatabase: (sessionId: SessionId, name: string, charset: string | null) => typedError<PlannedSql, AppError>(__TAURI_INVOKE("plan_create_database", { sessionId, name, charset })),
 	/**  Writes a schema's structure to a file the user chooses, and says how many objects it held. */
 	exportSchema: (sessionId: SessionId, schema: string) => typedError<number, AppError>(__TAURI_INVOKE("export_schema", { sessionId, schema })),
+	/**  Saves the diagram to a file the user chooses. */
+	exportDiagram: (svg: string, format: DiagramFormat, name: string) => typedError<null, AppError>(__TAURI_INVOKE("export_diagram", { svg, format, name })),
 	/**  Asks for a script and returns its text. The path stays here, in Rust. */
 	openSchemaFile: () => typedError<SchemaFile, AppError>(__TAURI_INVOKE("open_schema_file")),
 	/**  The tables a script would create, for drawing. Nothing runs. */
@@ -186,7 +199,12 @@ rowsAffected: number | null;
 /**  Whether the cap stopped reading. */
 truncated: boolean; 
 /**  Elapsed milliseconds. */
-elapsedMs: number } | 
+elapsedMs: number; 
+/**
+ *  The chart the model asked for, checked against the columns. Names columns only; the
+ *  values always come from `rows`.
+ */
+chart: ChartSpec | null } | 
 /**  It failed. */
 { type: "queryError"; 
 /**  Query id. */
@@ -327,6 +345,47 @@ export type CertificateInfo = {
 	fingerprintSha256: string,
 };
 
+/**  Every pending grid edit on one table, saved all or nothing. */
+export type ChangeSet = {
+	/**  Edited rows. */
+	updates: RowUpdate[],
+	/**  New rows. A column left out takes its default. */
+	inserts: CellValue[][],
+	/**  Primary keys of rows to delete. */
+	deletes: CellValue[][],
+};
+
+/**  A chart form. */
+export type ChartKind = 
+/**  Vertical bars. */
+"bar" | 
+/**  Horizontal bars, for many or long labels. */
+"horizontal_bar" | 
+/**  Stacked vertical bars. */
+"stacked_bar" | 
+/**  Lines. */
+"line" | 
+/**  Lines with a light fill. */
+"area" | 
+/**  A pie. */
+"pie" | 
+/**  A pie with a hole. */
+"donut" | 
+/**  Points on two value axes. */
+"scatter";
+
+/**  A chart over a result. Holds column names only, never values. */
+export type ChartSpec = {
+	/**  The form. */
+	kind: ChartKind,
+	/**  Column for labels (or the x values of a scatter). */
+	x: string,
+	/**  Value columns, one series each. */
+	y: string[],
+	/**  A short title. */
+	title: string | null,
+};
+
 /**  A column of a table. */
 export type ColumnInfo = {
 	/**  Owning table. */
@@ -395,6 +454,8 @@ export type ConnectionProfile = {
 	aiPolicy: AiPolicy,
 	/**  Optional accent colour. */
 	color: string | null,
+	/**  PostgreSQL: the schema to use on connect, in `database`. Ignored if it no longer exists. */
+	defaultSchema?: string | null,
 	/**  Whether a password is stored. Set by the store. */
 	hasPassword?: boolean,
 };
@@ -420,6 +481,10 @@ export type ConversationSummary = {
 	title: string,
 	/**  Last update, milliseconds since the epoch. */
 	updatedAt: number,
+	/**  The connection's name, when it still exists. */
+	connection: string | null,
+	/**  The database the conversation last worked in. */
+	database: string | null,
 };
 
 /**  Database details for underlining errors in the editor. */
@@ -451,6 +516,15 @@ export type Diagnostics = {
 	/**  Last log lines, with secrets removed. */
 	logTail: string[],
 };
+
+/**  An image format for the schema diagram. */
+export type DiagramFormat = 
+/**  PNG at twice the drawn size. */
+"Png" | 
+/**  JPEG at twice the drawn size. */
+"Jpeg" | 
+/**  A vector PDF, one page. */
+"Pdf";
 
 /**  A saved query. */
 export type Draft = {
@@ -588,6 +662,16 @@ export type ForeignKeyInfo = {
 	definition: string | null,
 };
 
+/**  What the grid may edit on a table. Decided in Rust. */
+export type GridEditInfo = {
+	/**  Primary key columns; empty means inline editing is off. */
+	primaryKey: string[],
+	/**  Columns that cannot be edited. */
+	locked: LockedColumn[],
+	/**  The most changes one save may hold. */
+	maxChanges: number,
+};
+
 /**  One run in the history. */
 export type HistoryEntry = {
 	/**  The run. */
@@ -674,6 +758,21 @@ export type LegacyImportSummary = {
 	history: number,
 	/**  Notes for the user. */
 	notes: string[],
+};
+
+/**  Why a column cannot be edited in the grid. */
+export type LockReason = 
+/**  Values are hidden by masking. */
+"Masked" | 
+/**  Binary; the grid holds only a preview. */
+"Binary";
+
+/**  A column the grid must not edit. */
+export type LockedColumn = {
+	/**  Column name. */
+	name: string,
+	/**  Why. */
+	reason: LockReason,
 };
 
 /**  A column whose values are hidden from the AI and optionally the grid. */
@@ -817,6 +916,16 @@ export type RowDensity =
 "Compact" | 
 /**  Easier to read. */
 "Roomy";
+
+/**  One edited row in a grid save. */
+export type RowUpdate = {
+	/**  The primary key, as loaded. */
+	key: CellValue[],
+	/**  Each edited column's value as loaded, to notice a change made by someone else. */
+	before: CellValue[],
+	/**  Each edited column's new value. */
+	after: CellValue[],
+};
 
 /**  Messages on a run's channel. */
 export type RunEvent = 

@@ -82,3 +82,31 @@ export async function runFlow(options: {
   const outcomes = await unwrap(commands.runQuery(target.session, sql, token, runId, channel));
   return { status: 'finished', outcomes, verdicts };
 }
+
+export type ChangesResult = { status: 'declined' } | { status: 'saved'; saved: number };
+
+/**
+ * The grid's save: Rust planned `sql`; the user reviews it, then it runs all or nothing through
+ * the grid's own door. Grid tokens do not open `run_query`.
+ */
+export async function runChanges(options: {
+  target: RunTarget;
+  sql: string;
+  confirm: Confirm;
+  runId: string;
+  warnings?: string[];
+}): Promise<ChangesResult> {
+  const { target, sql, confirm, runId, warnings = [] } = options;
+  const verdicts = await api.prepareQuery(target.session, sql);
+  const confirmed = await confirm({
+    sql,
+    verdicts,
+    connectionName: target.connectionName,
+    environment: target.environment,
+    warnings,
+  });
+  if (!confirmed) return { status: 'declined' };
+  const { token } = await api.approveQuery(target.session, sql, 'Grid');
+  const saved = await api.runRowChanges(target.session, sql, token, runId);
+  return { status: 'saved', saved };
+}

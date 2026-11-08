@@ -89,10 +89,10 @@ function TabBody({ tab }: { tab: Tab }) {
 
 function Palette({ onClose, actions }: { onClose: () => void; actions: { label: string; run: () => void }[] }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/55" onClick={onClose}>
       <Command
         label="Commands"
-        className="mx-auto mt-24 w-[92vw] max-w-lg rounded border border-line bg-panel p-2"
+        className="mx-auto mt-24 w-[92vw] max-w-lg rounded-lg border border-line bg-panel p-2 shadow-pop"
         onClick={(e) => e.stopPropagation()}
       >
         <Command.Input autoFocus placeholder="Type a command" className="mb-2 w-full rounded bg-ground px-2 py-1 text-sm outline-none" />
@@ -139,7 +139,7 @@ function RailButton({
       onClick={onClick}
       className={clsx(
         'flex h-14 w-full flex-col items-center justify-center gap-1 text-[11px] leading-none',
-        active ? 'here text-ink' : 'text-muted hover:bg-raised hover:text-ink',
+        active ? 'here text-accent' : 'text-muted hover:bg-raised hover:text-ink',
       )}
     >
       <Icon size={19} aria-hidden />

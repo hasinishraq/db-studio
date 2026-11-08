@@ -1,14 +1,37 @@
 import { EXPORT_LABELS, ROW_HEIGHTS, usePrefs } from '../../api/settings';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage } from '../../api';
-import { runFlow } from '../../api/run';
-import type { CellValue, ColumnMeta, ExportFormat, FilterOperator, FilterRule, RowChange, TableRef, TableStructure, Value } from '../../bindings';
+import { runChanges } from '../../api/run';
+import type {
+  CellValue,
+  ColumnMeta,
+  ExportFormat,
+  FilterOperator,
+  FilterRule,
+  GridEditInfo,
+  PlannedSql,
+  RowChange,
+  TablePage,
+  TableRef,
+  TableStructure,
+  Value,
+} from '../../bindings';
 import { newId, useStudio, type Tab } from '../../context/Studio';
-import { cellText, ResultStore } from '../../lib/resultStore';
+import {
+  addRow,
+  counts,
+  emptyPending,
+  hasPending,
+  rawValue,
+  toChangeSet,
+  toggleDeletes,
+  type Pending,
+} from '../../lib/pendingEdits';
 import { rowCount } from '../../lib/sqlText';
 import { ImportWizard } from '../modals/ImportWizard';
 import { Button, ErrorNote, Field, Input, Modal, Select } from '../ui';
+import { EditableGrid, type Editable } from './EditableGrid';
 import { useRunLog, WithLog } from './RunLog';
 
 type TableTabData = Extract<Tab, { kind: 'table' }>;
@@ -28,10 +51,6 @@ const OPERATORS: { value: FilterOperator; label: string; unary?: boolean }[] = [
   { value: 'IsNull', label: 'is empty', unary: true },
   { value: 'IsNotNull', label: 'is not empty', unary: true },
 ];
-
-function rawValue(value: Value | undefined): string | null {
-  return !value || value.t === 'Null' ? null : cellText(value);
-}
 
 function rowKey(columns: ColumnMeta[], row: Value[]): CellValue[] {
   return columns.map((column, index) => ({ column: column.name, value: rawValue(row[index]) }));
@@ -207,10 +226,23 @@ function StructureView({ structure }: { structure: TableStructure }) {
   );
 }
 
+/** Why inline editing is off, or `null` when it is on. */
+function editOffReason(info: GridEditInfo | undefined, readOnly: boolean): string | null {
+  if (readOnly) return 'This connection is read-only, so rows cannot be changed.';
+  if (!info) return null;
+  if (info.primaryKey.length === 0) {
+    return 'This table has no primary key, so cells cannot be edited in place. Double-click a row to edit it in a form.';
+  }
+  const hidden = info.primaryKey.find((name) => info.locked.some((l) => l.name === name && l.reason === 'Masked'));
+  if (hidden) return `The key column ${hidden} is masked, so rows cannot be edited in place.`;
+  return null;
+}
+
 export function TableTab({ tab }: { tab: TableTabData }) {
-  const { sessions, targetFor, confirm } = useStudio();
+  const { sessions, targetFor, confirm, profiles, setUnsaved } = useStudio();
   const client = useQueryClient();
   const session = sessions[tab.profileId]?.sessionId;
+  const readOnly = profiles.find((p) => p.id === tab.profileId)?.readOnly ?? false;
   const [view, setView] = useState<'data' | 'structure'>('data');
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<FilterRule[]>([]);
@@ -220,13 +252,21 @@ export function TableTab({ tab }: { tab: TableTabData }) {
   const [filtering, setFiltering] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPendingState] = useState<Pending>(emptyPending);
+  // While edits are pending the grid shows the rows they were made on, even if a refresh lands.
+  const [frozen, setFrozen] = useState<TablePage | null>(null);
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  const [saving, setSaving] = useState(false);
   const log = useRunLog();
   const prefs = usePrefs();
   const table: TableRef = tab.table;
   const key = ['schema', tab.profileId, 'page', table, offset, filters, sort];
+  const unsaved = hasPending(pending);
 
-  // The selection is by position on the page, so it ends when the page changes.
+  // The selection and pending edits are by position on the page, so they end when the page changes.
   useEffect(() => setSelected(new Set()), [offset, filters, sort]);
+  useEffect(() => setUnsaved(tab.id, unsaved), [setUnsaved, tab.id, unsaved]);
+  useEffect(() => () => setUnsaved(tab.id, false), [setUnsaved, tab.id]);
 
   const page = useQuery({
     queryKey: key,
@@ -244,49 +284,85 @@ export function TableTab({ tab }: { tab: TableTabData }) {
     enabled: Boolean(session),
     queryFn: () => api.tableStructure(session ?? '', table),
   });
+  const editInfo = useQuery({
+    queryKey: ['schema', tab.profileId, 'edit-info', table],
+    enabled: Boolean(session),
+    queryFn: () => api.gridEditInfo(session ?? '', table),
+  });
 
-  /** Edits are planned in Rust, then go through the same review as typed SQL. */
-  const apply = async (change: RowChange) => {
+  const offReason = editOffReason(editInfo.data, readOnly);
+  const editable: Editable | null = useMemo(
+    () =>
+      editInfo.data && !offReason
+        ? { locked: new Map(editInfo.data.locked.map((l) => [l.name, l.reason] as const)) }
+        : null,
+    [editInfo.data, offReason],
+  );
+
+  const shown = frozen ?? page.data;
+  const columns = shown?.columns ?? [];
+  const rows = shown?.rows ?? [];
+
+  const setPending = (next: Pending) => {
+    setPendingState(next);
+    if (!hasPending(next)) setFrozen(null);
+    else if (!frozen) setFrozen(page.data ?? null);
+  };
+  const total = count.data;
+  const tally = counts(pending);
+
+  /** Runs `action` now, or after the user agrees to drop unsaved edits. */
+  const guarded = (action: () => void) => {
+    if (unsaved) setLeaving(() => action);
+    else action();
+  };
+
+  const refresh = () => void client.invalidateQueries({ queryKey: ['schema', tab.profileId] });
+
+  /** Rust plans the SQL; the user reviews it; it runs all or nothing through the grid's door. */
+  const save = async (plan: () => Promise<PlannedSql>, done: () => void) => {
     const target = targetFor(tab.profileId);
     if (!target || !session) return;
     setError(null);
+    setSaving(true);
+    let sql: string | undefined;
     try {
-      const planned = await api.planRowChange(session, table, change);
-      const result = await runFlow({
-        target,
-        sql: planned.sql,
-        origin: 'Grid',
-        confirm,
-        runId: newId(),
-        store: new ResultStore(),
-        warnings: planned.warnings,
-      });
+      const planned = await plan();
+      sql = planned.sql;
+      const result = await runChanges({ target, sql, confirm, runId: newId(), warnings: planned.warnings });
       if (result.status === 'declined') {
-        log.add('info', 'Change not made: confirmation declined', planned.sql);
-      } else {
-        const failed = result.outcomes.find((o) => o.kind === 'error');
-        if (failed?.kind === 'error') {
-          setError(failed.error.message);
-          log.add('error', failed.error.message, planned.sql);
-        }
-        for (const outcome of result.outcomes) {
-          if (outcome.kind === 'command') {
-            log.add('change', `${rowCount(outcome.rowsAffected)} affected in ${outcome.elapsedMs} ms`, planned.sql);
-          }
-        }
-        setEditing(null);
-        setSelected(new Set());
-        void client.invalidateQueries({ queryKey: ['schema', tab.profileId] });
+        log.add('info', 'Change not made: confirmation declined', sql);
+        return;
       }
+      log.add('change', `Saved ${result.saved === 1 ? '1 change' : `${result.saved} changes`}`, sql);
+      done();
+      refresh();
     } catch (e) {
       setError(errorMessage(e));
-      log.add('error', errorMessage(e));
+      log.add('error', errorMessage(e), sql);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const columns = page.data?.columns ?? [];
-  const rows = page.data?.rows ?? [];
-  const total = count.data;
+  const saveAll = () =>
+    void save(
+      () => api.planRowChanges(session ?? '', table, toChangeSet(pending, columns, rows, editInfo.data?.primaryKey ?? [])),
+      () => {
+        setPending(emptyPending());
+        setSelected(new Set());
+      },
+    );
+
+  /** The form path, for tables without a primary key. */
+  const apply = (change: RowChange) =>
+    void save(
+      () => api.planRowChange(session ?? '', table, change),
+      () => {
+        setEditing(null);
+        setSelected(new Set());
+      },
+    );
 
   const exportTable = async (format: string) => {
     if (!session || !format) return;
@@ -303,6 +379,18 @@ export function TableTab({ tab }: { tab: TableTabData }) {
       if (!(e instanceof ApiError && e.code === 'Cancelled')) setError(errorMessage(e));
     }
   };
+
+  const deleteSelected = () => {
+    const picked = [...selected].sort((a, b) => a - b);
+    if (editable) {
+      setPending(toggleDeletes(pending, picked));
+      setSelected(new Set());
+    } else {
+      apply({ kind: 'delete', keys: picked.flatMap((i) => (rows[i] ? [rowKey(columns, rows[i])] : [])) });
+    }
+  };
+
+  const tooMany = editInfo.data ? tally.changed + tally.added + tally.deleted > editInfo.data.maxChanges : false;
 
   return (
     <div className="flex h-full flex-col">
@@ -322,20 +410,19 @@ export function TableTab({ tab }: { tab: TableTabData }) {
         </div>
         {view === 'data' && (
           <>
-            <Button onClick={() => setFiltering(true)}>Filter{filters.length ? ` (${filters.length})` : ''}</Button>
-            <Button onClick={() => setEditing({ row: null })}>Insert row</Button>
+            <Button onClick={() => guarded(() => setFiltering(true))}>Filter{filters.length ? ` (${filters.length})` : ''}</Button>
             <Button
-              disabled={selected.size === 0}
-              onClick={() =>
-                void apply({
-                  kind: 'delete',
-                  keys: [...selected].flatMap((i) => (rows[i] ? [rowKey(columns, rows[i])] : [])),
-                })
-              }
+              disabled={readOnly}
+              onClick={() => (editable ? setPending(addRow(pending)) : setEditing({ row: null }))}
             >
+              Insert row
+            </Button>
+            <Button disabled={selected.size === 0 || readOnly} onClick={deleteSelected}>
               Delete {selected.size || ''} rows
             </Button>
-            <Button onClick={() => setImporting(true)}>Import CSV</Button>
+            <Button disabled={unsaved} onClick={() => setImporting(true)}>
+              Import CSV
+            </Button>
             <Button title="Change the format in Settings" onClick={() => void exportTable(prefs.exportFormat)}>
               Export {selected.size > 0 ? `${selected.size} ` : ''}as {EXPORT_LABELS[prefs.exportFormat]}
             </Button>
@@ -349,84 +436,72 @@ export function TableTab({ tab }: { tab: TableTabData }) {
             <span className="ml-auto text-sm text-muted">
               {offset + 1} to {offset + rows.length} of {total === null ? 'many' : (total?.toLocaleString() ?? '…')}
             </span>
-            <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+            <Button disabled={offset === 0} onClick={() => guarded(() => setOffset(Math.max(0, offset - PAGE_SIZE)))}>
               Previous
             </Button>
-            <Button disabled={rows.length < PAGE_SIZE} onClick={() => setOffset(offset + PAGE_SIZE)}>
+            <Button disabled={rows.length < PAGE_SIZE} onClick={() => guarded(() => setOffset(offset + PAGE_SIZE))}>
               Next
             </Button>
           </>
         )}
       </div>
-      <ErrorNote message={error ?? (page.error ? errorMessage(page.error) : null)} />
-      <WithLog log={log}>
-      {view === 'structure' ? (
-        structure.data ? (
-          <StructureView structure={structure.data} />
-        ) : null
-      ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="border-collapse font-mono text-xs">
-            <thead className="sticky top-0 z-10 bg-panel shadow-[inset_0_-2px_0_var(--edge)]">
-              <tr>
-                <th className="border-b border-line" aria-label="Select" />
-                {columns.map((column) => (
-                  <th key={column.name} className="border-b border-r border-line px-2 text-left">
-                    <button
-                      type="button"
-                      className="font-bold"
-                      title={column.typeName}
-                      onClick={() =>
-                        setSort((s) => (s?.column === column.name ? { ...s, descending: !s.descending } : { column: column.name, descending: false }))
-                      }
-                    >
-                      {column.name}
-                      {sort?.column === column.name ? (sort.descending ? ' ▼' : ' ▲') : ''}
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr
-                  key={index}
-                  aria-selected={selected.has(index)}
-                  title="Double-click to edit"
-                  className={selected.has(index) ? 'here' : `hover:bg-raised ${index % 2 ? 'stripe' : ''}`}
-                  onDoubleClick={() => setEditing({ row })}
-                >
-                  <td className="border-b border-line/40 px-1">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select row ${offset + index + 1}`}
-                      checked={selected.has(index)}
-                      onChange={(e) =>
-                        setSelected((set) => {
-                          const next = new Set(set);
-                          if (e.target.checked) next.add(index);
-                          else next.delete(index);
-                          return next;
-                        })
-                      }
-                    />
-                  </td>
-                  {columns.map((column, cell) => (
-                    <td
-                      key={column.name}
-                      style={{ height: ROW_HEIGHTS[prefs.rowDensity] }}
-                      className={`max-w-xs truncate border-b border-r border-line/40 px-2 ${row[cell]?.t === 'Null' ? 'italic text-muted' : ''}`}
-                    >
-                      {row[cell]?.t === 'Null' ? prefs.nullText : cellText(row[cell])}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {rows.length === 0 && !page.isLoading && <p className="p-3 text-sm text-muted">No rows match.</p>}
+      {view === 'data' && unsaved && (
+        <div role="status" aria-label="Unsaved changes" className="flex flex-wrap items-center gap-2 border-b border-line bg-change/10 px-2 py-1 text-sm">
+          <span className="font-bold">Not saved:</span>
+          <span>
+            {[
+              tally.changed && `${tally.changed} changed`,
+              tally.added && `${tally.added} new`,
+              tally.deleted && `${tally.deleted} deleted`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+          {tooMany && <span className="text-danger">One save holds at most {editInfo.data?.maxChanges} changes.</span>}
+          <span className="ml-auto" />
+          <Button disabled={saving} onClick={() => setPending(emptyPending())}>
+            Discard
+          </Button>
+          <Button tone="change" disabled={saving || tooMany} onClick={saveAll}>
+            Review and save
+          </Button>
         </div>
       )}
+      {view === 'data' && offReason && editInfo.data && (
+        <p className="border-b border-line px-2 py-1 text-xs text-muted">{offReason}</p>
+      )}
+      <ErrorNote message={error ?? (page.error ? errorMessage(page.error) : null)} />
+      <WithLog log={log}>
+        {view === 'structure' ? (
+          structure.data ? (
+            <StructureView structure={structure.data} />
+          ) : null
+        ) : (
+          <div className="min-h-0 flex-1 overflow-auto">
+            <EditableGrid
+              columns={columns}
+              rows={rows}
+              offset={offset}
+              nullText={prefs.nullText}
+              rowHeight={ROW_HEIGHTS[prefs.rowDensity]}
+              pending={pending}
+              onPending={setPending}
+              editable={editable}
+              selected={selected}
+              onSelected={setSelected}
+              sort={sort}
+              onSort={(column) =>
+                guarded(() =>
+                  setSort((s) => (s?.column === column ? { ...s, descending: !s.descending } : { column, descending: false })),
+                )
+              }
+              onRowOpen={(row) => editInfo.data && !editable && !readOnly && setEditing({ row })}
+            />
+            {rows.length === 0 && pending.inserts.length === 0 && !page.isLoading && (
+              <p className="p-3 text-sm text-muted">No rows match.</p>
+            )}
+          </div>
+        )}
       </WithLog>
       {editing && (
         <RowEditor
@@ -434,7 +509,7 @@ export function TableTab({ tab }: { tab: TableTabData }) {
           row={editing.row}
           onClose={() => setEditing(null)}
           onSave={(values) =>
-            void apply(
+            apply(
               editing.row
                 ? { kind: 'update', key: rowKey(columns, editing.row), values }
                 : { kind: 'insert', values },
@@ -461,6 +536,27 @@ export function TableTab({ tab }: { tab: TableTabData }) {
           profileId={tab.profileId}
           onClose={() => setImporting(false)}
         />
+      )}
+      {leaving && (
+        <Modal title="Discard unsaved changes?" onClose={() => setLeaving(null)}>
+          <p className="text-sm">
+            Your edits are tied to the rows on this page. Save them first, or discard them to continue.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button onClick={() => setLeaving(null)}>Keep editing</Button>
+            <Button
+              tone="danger"
+              onClick={() => {
+                const action = leaving;
+                setLeaving(null);
+                setPending(emptyPending());
+                action();
+              }}
+            >
+              Discard and continue
+            </Button>
+          </div>
+        </Modal>
       )}
     </div>
   );
