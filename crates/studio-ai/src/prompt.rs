@@ -40,7 +40,7 @@ fn truncated(text: &str, max: usize) -> (&str, bool) {
 /// Builds the system prompt.
 pub fn build_system_prompt(ctx: &PromptContext<'_>) -> String {
     let mut out = String::from(
-        "You are the assistant inside AI DB Studio, a desktop database client. You help the user \
+        "You are the assistant inside DB Studio, a desktop database client. You help the user \
          understand and work with their database. Be concise and accurate.\n\n\
          Rules:\n\
          - Run one SQL statement at a time.\n\

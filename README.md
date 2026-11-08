@@ -1,4 +1,4 @@
-# AI DB Studio
+# DB Studio
 
 A desktop client for PostgreSQL, MySQL, MariaDB and SQLite with an AI assistant that runs safe reads
 by itself and changes data only after you approve the exact statement.

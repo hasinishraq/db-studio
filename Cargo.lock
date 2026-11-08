@@ -1589,7 +1589,7 @@ dependencies = [
 
 [[package]]
 name = "driver-mysql"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "futures",
@@ -1605,7 +1605,7 @@ dependencies = [
 
 [[package]]
 name = "driver-postgres"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "deadpool-postgres",
@@ -1627,7 +1627,7 @@ dependencies = [
 
 [[package]]
 name = "driver-sqlite"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "rusqlite",
@@ -6600,7 +6600,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "studio-ai"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "dashmap",
@@ -6623,7 +6623,7 @@ dependencies = [
 
 [[package]]
 name = "studio-app"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6671,7 +6671,7 @@ dependencies = [
 
 [[package]]
 name = "studio-db"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "insta",
@@ -6684,7 +6684,7 @@ dependencies = [
 
 [[package]]
 name = "studio-safety"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "dashmap",
  "hex",
@@ -6698,7 +6698,7 @@ dependencies = [
 
 [[package]]
 name = "studio-session"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6720,7 +6720,7 @@ dependencies = [
 
 [[package]]
 name = "studio-store"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6741,7 +6741,7 @@ dependencies = [
 
 [[package]]
 name = "studio-tunnel"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6759,7 +6759,7 @@ dependencies = [
 
 [[package]]
 name = "studio-types"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "insta",
  "serde",

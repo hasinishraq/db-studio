@@ -113,7 +113,7 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running AI DB Studio");
+        .expect("error while running DB Studio");
 }
 
 #[cfg(test)]

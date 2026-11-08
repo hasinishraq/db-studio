@@ -5,7 +5,7 @@ use std::time::Duration;
 use studio_types::TlsMode;
 
 /// Application name reported to servers.
-pub const APPLICATION_NAME: &str = "AI DB Studio";
+pub const APPLICATION_NAME: &str = "DB Studio";
 
 /// Transport security settings.
 #[derive(Clone, Debug, Default)]

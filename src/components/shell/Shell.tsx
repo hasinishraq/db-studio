@@ -259,7 +259,7 @@ export function Shell() {
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-2 border-b border-line bg-panel px-3 py-1 text-sm">
-          <strong>AI DB Studio</strong>
+          <strong>DB Studio</strong>
           {activeProfile && (
             <span className="text-muted">
               {activeProfile.name}

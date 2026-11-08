@@ -1,4 +1,4 @@
-# AI DB Studio (Rust) - instructions for Claude Code
+# DB Studio (Rust) - instructions for Claude Code
 
 ## What this is
 Desktop database client (PostgreSQL, MySQL/MariaDB, SQLite) with a safe AI assistant.

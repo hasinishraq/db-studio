@@ -222,7 +222,7 @@ export function SettingsTab() {
 
   const copyDiagnostics = async () => {
     const report = await api.diagnostics();
-    const text = [`AI DB Studio ${report.version}`, report.os, ...report.logTail].join('\n');
+    const text = [`DB Studio ${report.version}`, report.os, ...report.logTail].join('\n');
     await navigator.clipboard.writeText(text);
     setDiagnostics('Copied.');
   };

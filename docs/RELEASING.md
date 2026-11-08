@@ -9,7 +9,7 @@ are not done in the repository.
    update again.
 
    ```bash
-   npx tauri signer generate -w ~/.tauri/aidbstudio.key
+   npx tauri signer generate -w ~/.tauri/dbstudio.key
    ```
 
 2. In `src-tauri/tauri.conf.json`, set `plugins.updater.pubkey` to the contents of the `.pub` file,

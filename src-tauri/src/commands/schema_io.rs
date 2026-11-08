@@ -89,7 +89,7 @@ pub fn schema_script(engine: Engine, schema: &str, structures: &[TableStructure]
     let (tables, views): (Vec<&TableStructure>, Vec<&TableStructure>) =
         structures.iter().partition(|s| s.kind == ObjectKind::Table);
     let mut out = format!(
-        "-- Structure of {schema}, written by AI DB Studio. It holds no rows.\n\
+        "-- Structure of {schema}, written by DB Studio. It holds no rows.\n\
          -- Types, triggers and functions are not included.\n\n"
     );
     if engine == Engine::Postgres && schema != "public" {

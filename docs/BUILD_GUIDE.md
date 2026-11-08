@@ -1,4 +1,4 @@
-# AI DB Studio (Rust) — Build Guide for Claude Code
+# DB Studio (Rust) — Build Guide for Claude Code
 
 Nov 7, 2026 · @FYDP III
 
@@ -55,7 +55,7 @@ Do not commit; I will review and commit.
 
 ## 2. What we are building
 
-AI DB Studio is a desktop database client for PostgreSQL, MySQL/MariaDB and SQLite, with an AI assistant that runs safe reads on its own and can change data only after the user approves the exact statement. It is a Tauri 2 app: a Rust backend in a Cargo workspace, and a React + TypeScript frontend in the system webview.
+DB Studio is a desktop database client for PostgreSQL, MySQL/MariaDB and SQLite, with an AI assistant that runs safe reads on its own and can change data only after the user approves the exact statement. It is a Tauri 2 app: a Rust backend in a Cargo workspace, and a React + TypeScript frontend in the system webview.
 
 ### Scope of version 1.0
 
@@ -166,7 +166,7 @@ All commands must print a version (Docker prints its hello message). Node must b
 Copy the block below exactly into `CLAUDE.md`. It is short on purpose: Claude Code loads it every session, and the detail lives in `docs/BUILD_GUIDE.md`.
 
 ```markdown
-# AI DB Studio (Rust) - instructions for Claude Code
+# DB Studio (Rust) - instructions for Claude Code
 
 ## What this is
 Desktop database client (PostgreSQL, MySQL/MariaDB, SQLite) with a safe AI assistant.
@@ -244,7 +244,7 @@ Scaffold into a temporary folder, then move the files into your repo (which alre
 cd ..
 npm create tauri-app@latest
 #   Project name:        ai-db-studio-scaffold
-#   Identifier:          com.aidbstudio.app   (choose your own reverse-domain id)
+#   Identifier:          com.dbstudio.desktop   (choose your own reverse-domain id)
 #   Frontend language:   TypeScript / JavaScript
 #   Package manager:     npm
 #   UI template:         React
@@ -589,7 +589,7 @@ Plan first, wait for approval, then implement and run the gate.
 **Tasks.**
 
 1. `Driver` and `Session` traits exactly as in the architecture document (use `async_trait` so they are object-safe): `server_info`, `list_schemas`, `list_objects`, `columns`, `table_structure`, `execute`, `table_page`, `table_count`, `explain`, `begin`, `commit`, `rollback`, `canceller`, `close`.
-2. `ConnectConfig` built by the session manager: host, port, database, username, password (`SecretString`), tls (mode, CA path, client cert/key paths), connect timeout, application name `AI DB Studio`.
+2. `ConnectConfig` built by the session manager: host, port, database, username, password (`SecretString`), tls (mode, CA path, client cert/key paths), connect timeout, application name `DB Studio`.
 3. `ExecOptions { read_only_tx, timeout, max_rows, batch_size }` and `RowSink = tokio::sync::mpsc::Sender<RowBatch>`.
 4. `Canceller` trait: `async fn cancel(&self) -> Result<(), DbError>`.
 5. `DbError` with variants: Connect, Tls, Auth, Query { sqlstate, message, position }, Timeout, Cancelled, ReadOnlyViolation, Unsupported, Internal.
@@ -819,7 +819,7 @@ Plan first, wait for approval, then implement and run the gate.
 7. **Capabilities** (`capabilities/main.json`, appendix A.3): only `core:default`, dialog open/save, opener for URLs, process restart, updater (added in Phase 16). Install no shell or fs plugin.
 8. **CSP** in `tauri.conf.json` (appendix A.2).
 9. **Audit sink**: implement `AuditSink` over `Store`.
-10. Window: 1280x840, min 960x640, title "AI DB Studio".
+10. Window: 1280x840, min 960x640, title "DB Studio".
 
 **Tests.** unit tests for the plain functions with a temp store, memory secrets and a fake driver: saving a profile with a password stores the secret and `list_profiles` shows `has_password: true` and no password; `approve_query` then `run_query` succeeds; reusing the token fails; `export_bindings` produces a file that `tsc` compiles.
 
@@ -1150,8 +1150,8 @@ Plan first, wait for approval, then implement and run that row's gate.
 
 **Tasks.**
 
-1. **Import from the Electron version** (`src-tauri/src/commands/import_legacy.rs`): on first launch, look for the old data folder (`AI DB Studio` or `ai-db-studio` in the platform config dir). Read `studio-storage.json` and `ai-memory.json`; convert profiles (TLS `PREFER` becomes `Require` with a warning badge suggesting Verify full), drafts, history, settings and conversations into `studio.db`. Old secrets were encrypted with Electron's `safeStorage` and cannot be decrypted here: mark those profiles `has_password: false` and ask the user to re-enter passwords. Keep a backup copy of both files. Show a one-time summary dialog.
-2. **Updater**: add `tauri-plugin-updater` and `tauri-plugin-process`; generate the signing key pair with `cargo tauri signer generate -w ~/.tauri/aidbstudio.key`; put the public key in `plugins.updater.pubkey` and the endpoint in `plugins.updater.endpoints`; set `bundle.createUpdaterArtifacts: true`; check on start and every 24 h; show release notes; download, verify, install, restart.
+1. **Import from the Electron version** (`src-tauri/src/commands/import_legacy.rs`): on first launch, look for the old data folder (`DB Studio` or `ai-db-studio` in the platform config dir). Read `studio-storage.json` and `ai-memory.json`; convert profiles (TLS `PREFER` becomes `Require` with a warning badge suggesting Verify full), drafts, history, settings and conversations into `studio.db`. Old secrets were encrypted with Electron's `safeStorage` and cannot be decrypted here: mark those profiles `has_password: false` and ask the user to re-enter passwords. Keep a backup copy of both files. Show a one-time summary dialog.
+2. **Updater**: add `tauri-plugin-updater` and `tauri-plugin-process`; generate the signing key pair with `cargo tauri signer generate -w ~/.tauri/dbstudio.key`; put the public key in `plugins.updater.pubkey` and the endpoint in `plugins.updater.endpoints`; set `bundle.createUpdaterArtifacts: true`; check on start and every 24 h; show release notes; download, verify, install, restart.
 3. **Release workflow** (appendix A.7) using `tauri-apps/tauri-action`: macOS arm64 and x64 (or universal), Windows x64, Ubuntu 22.04; signed with secrets; uploads installers and `latest.json` to a draft GitHub release.
 4. **macOS signing and notarisation**: Developer ID Application certificate; secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password), `APPLE_TEAM_ID`.
 5. **Windows signing**: an Authenticode certificate (OV/EV or a cloud signing service) configured in `bundle.windows` (`certificateThumbprint` or a custom `signCommand`).
@@ -1243,7 +1243,7 @@ A release is a git tag `vX.Y.Z`; CI builds and signs installers for all three pl
 
 ### One-time setup
 
-1. **Updater keys.** `cargo tauri signer generate -w ~/.tauri/aidbstudio.key`. Store the private key and its password as GitHub secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Put the public key in `tauri.conf.json` under `plugins.updater.pubkey`. Back up the private key offline: if it is lost, installed apps can never update again.
+1. **Updater keys.** `cargo tauri signer generate -w ~/.tauri/dbstudio.key`. Store the private key and its password as GitHub secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Put the public key in `tauri.conf.json` under `plugins.updater.pubkey`. Back up the private key offline: if it is lost, installed apps can never update again.
 2. **Updater endpoint.** `https://github.com/<owner>/<repo>/releases/latest/download/latest.json` in `plugins.updater.endpoints`.
 3. **Apple** (Apple Developer Program): create a Developer ID Application certificate, export it as .p12, base64-encode it into `APPLE_CERTIFICATE` with its password in `APPLE_CERTIFICATE_PASSWORD`; set `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (an app-specific password) and `APPLE_TEAM_ID`.
 4. **Windows**: buy an OV or EV code-signing certificate, or use a cloud signing service. Configure it in `bundle.windows` (thumbprint, or a `signCommand` for cloud signing). Unsigned builds work but show SmartScreen warnings.
@@ -1434,9 +1434,9 @@ The minor versions for `deadpool-postgres`, `tokio-postgres-rustls`, `mysql_asyn
 ```json
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AI DB Studio",
+  "productName": "DB Studio",
   "version": "0.1.0",
-  "identifier": "com.aidbstudio.app",
+  "identifier": "com.dbstudio.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -1445,7 +1445,7 @@ The minor versions for `deadpool-postgres`, `tokio-postgres-rustls`, `mysql_asyn
   },
   "app": {
     "windows": [
-      { "label": "main", "title": "AI DB Studio", "width": 1280, "height": 840, "minWidth": 960, "minHeight": 640 }
+      { "label": "main", "title": "DB Studio", "width": 1280, "height": 840, "minWidth": 960, "minHeight": 640 }
     ],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
@@ -1460,7 +1460,7 @@ The minor versions for `deadpool-postgres`, `tokio-postgres-rustls`, `mysql_asyn
   },
   "plugins": {
     "updater": {
-      "pubkey": "<CONTENT OF ~/.tauri/aidbstudio.key.pub>",
+      "pubkey": "<CONTENT OF ~/.tauri/dbstudio.key.pub>",
       "endpoints": ["https://github.com/<owner>/<repo>/releases/latest/download/latest.json"]
     }
   }
@@ -1593,7 +1593,7 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running AI DB Studio");
+        .expect("error while running DB Studio");
 }
 
 #[cfg(test)]
@@ -1715,7 +1715,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "AI DB Studio ${{ github.ref_name }}"
+          releaseName: "DB Studio ${{ github.ref_name }}"
           releaseBody: "See CHANGELOG.md for details."
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-rc') }}

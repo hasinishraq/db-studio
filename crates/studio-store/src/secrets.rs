@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use studio_types::ProfileId;
 use tokio::sync::oneshot;
 
-const SERVICE: &str = "com.aidbstudio.app";
+const SERVICE: &str = "com.dbstudio.desktop";
 
 /// Names one stored secret.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

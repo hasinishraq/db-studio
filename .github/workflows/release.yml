@@ -42,7 +42,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "AI DB Studio ${{ github.ref_name }}"
+          releaseName: "DB Studio ${{ github.ref_name }}"
           releaseBody: "See CHANGELOG.md for details."
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-rc') }}

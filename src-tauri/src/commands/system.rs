@@ -187,6 +187,7 @@ fn legacy_candidates(app: &AppHandle) -> Vec<PathBuf> {
     let Ok(config) = app.path().config_dir() else {
         return Vec::new();
     };
+    // The old Electron app saved under its old name, "AI DB Studio". Keep these to find it.
     ["AI DB Studio", "ai-db-studio"]
         .iter()
         .map(|name| config.join(name).join("studio-storage.json"))

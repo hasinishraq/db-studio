@@ -370,6 +370,17 @@ apply. Nothing has been committed; the human reviews and commits.
 - Checked: 345 Rust tests, 84 frontend tests, clippy, fmt, `cargo deny`, typecheck. The new
   end-to-end steps in `grid-and-diagram.mjs` have not run (no test servers).
 
+## After hand-over: renamed to DB Studio, version 0.1.4
+- The visible name is DB Studio everywhere (window, header, installer, assistant prompt, crash
+  and diagnostics text, the name reported to servers, docs). npm package: `db-studio`.
+- Decision: the identifier is now `com.dbstudio.desktop`, for the app data folder and the keychain
+  service, so the app starts with no saved connections. Old data stays in
+  `%APPDATA%\com.aidbstudio.app` and under `com.aidbstudio.app` in Credential Manager; nothing
+  migrates it, and nothing deletes it.
+- The MSI upgrade code is pinned to the old derived one (`C83131D2-971B-5CC4-8418-CC52CB698DE9`),
+  so installing replaces an "AI DB Studio" install instead of sitting beside it.
+- The legacy importer still looks for the old Electron app under its old name, on purpose.
+
 ## Verification at hand-over
 - `cargo test --workspace` with every server up, including MySQL TLS: 250 passed, 0 failed, 0 skipped.
 - `npm test`: 34 passed. Clippy, fmt and `cargo deny check` clean.

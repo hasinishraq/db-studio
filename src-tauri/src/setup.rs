@@ -40,7 +40,7 @@ fn install_crash_hook(dir: PathBuf) {
             .location()
             .map_or_else(|| "unknown".to_owned(), ToString::to_string);
         let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-        let text = format!("AI DB Studio {} panicked at {place}\n", env!("CARGO_PKG_VERSION"));
+        let text = format!("DB Studio {} panicked at {place}\n", env!("CARGO_PKG_VERSION"));
         let _ = std::fs::write(dir.join(format!("crash-{stamp}.txt")), text);
         previous(info);
     }));
