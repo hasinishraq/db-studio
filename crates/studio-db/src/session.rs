@@ -87,6 +87,16 @@ pub trait Session: Send + Sync {
             "this connection cannot change database".to_owned(),
         ))
     }
+    /// The schema unqualified names resolve in, where the engine has one.
+    async fn current_schema(&self) -> Result<Option<String>, DbError> {
+        Ok(None)
+    }
+    /// Makes a schema the first place unqualified names resolve, for every later connection.
+    async fn use_schema(&self, _name: &str) -> Result<(), DbError> {
+        Err(DbError::Unsupported(
+            "this connection has no schemas to choose".to_owned(),
+        ))
+    }
     /// Lists schemas.
     async fn list_schemas(&self) -> Result<Vec<SchemaRef>, DbError>;
     /// Lists tables and views in a schema.

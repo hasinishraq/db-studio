@@ -1,3 +1,4 @@
+import { usePrefs } from '../../api/settings';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -91,7 +92,8 @@ function SchemaNode({
           type="button"
           aria-expanded={expanded}
           aria-current={chosen || undefined}
-          title={onChoose && !chosen ? 'Use this database' : undefined}
+          data-level={nested ? 'schema' : 'database'}
+          title={onChoose && !chosen ? `Use this ${nested ? 'schema' : 'database'}` : undefined}
           onClick={() => {
             setExpanded(onChoose && !chosen ? true : !expanded);
             onChoose?.();
@@ -152,6 +154,7 @@ function ConnectionNode({
   const session = sessions[profile.id];
   const current = session?.database ?? null;
   const separateDatabases = profile.engine === 'Postgres';
+  const prefs = usePrefs();
   const [creatingDatabase, setCreatingDatabase] = useState(false);
   const [databaseOpen, setDatabaseOpen] = useState(true);
   // A search shows matches even inside a collapsed connection.
@@ -198,6 +201,20 @@ function ConnectionNode({
     }
   };
 
+  const chooseSchema = async (schema: string) => {
+    if (!session || schema === session.schema) return;
+    setError(null);
+    try {
+      setSession(profile.id, await api.switchSchema(session.sessionId, schema));
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.code === 'DirtyTransaction'
+          ? 'Commit or roll back first. Then change schema.'
+          : errorMessage(e),
+      );
+    }
+  };
+
   const schemaNodes = (selectable: boolean, nested = false) =>
     session &&
     schemas.map((schema) => (
@@ -207,8 +224,8 @@ function ConnectionNode({
         schema={schema.name}
         profile={profile}
         search={search}
-        chosen={selectable && schema.name === current}
-        onChoose={selectable ? () => void choose(schema.name) : undefined}
+        chosen={selectable && schema.name === (nested ? session.schema : current)}
+        onChoose={selectable ? () => void (nested ? chooseSchema(schema.name) : choose(schema.name)) : undefined}
         nested={nested}
       />
     ));
@@ -219,6 +236,9 @@ function ConnectionNode({
     try {
       setSession(profile.id, await api.connect(profile.id));
       setState('offline');
+      if (prefs.openQueryOnConnect) {
+        openTab({ id: newId(), kind: 'sql', title: 'New query', profileId: profile.id, draftId: null, sql: '' });
+      }
     } catch (e) {
       setState('failed');
       if (e instanceof ApiError && e.hostKey) {
@@ -337,6 +357,7 @@ function ConnectionNode({
                 <button
                   type="button"
                   aria-current={database === current || undefined}
+                  data-level="database"
                   aria-expanded={database === current ? databaseOpen : undefined}
                   title={database === current ? (databaseOpen ? 'Collapse' : 'Expand') : 'Use this database'}
                   onClick={() => {
@@ -361,7 +382,7 @@ function ConnectionNode({
                 {database === current && <span className="shrink-0 text-xs text-muted">in use</span>}
               </div>
               {database === current && databaseOpen && (
-                <div className="ml-5 border-l border-line">{schemaNodes(false, true)}</div>
+                <div className="ml-5 border-l border-line">{schemaNodes(true, true)}</div>
               )}
             </div>
           ))

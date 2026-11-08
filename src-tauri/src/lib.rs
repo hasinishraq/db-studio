@@ -24,6 +24,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::sessions::connect,
             commands::sessions::list_databases,
             commands::sessions::use_database,
+            commands::sessions::use_schema,
             commands::sessions::disconnect,
             commands::schema::list_schemas,
             commands::schema::list_objects,

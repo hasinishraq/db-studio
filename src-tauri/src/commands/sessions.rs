@@ -86,6 +86,18 @@ pub async fn use_database(
         .app()
 }
 
+/// Chooses the schema unqualified names resolve in first. PostgreSQL only.
+#[tauri::command]
+#[specta::specta]
+pub async fn use_schema(
+    state: State<'_, AppState>,
+    session_id: SessionId,
+    schema: String,
+) -> Result<SessionInfo, AppError> {
+    check_text("the schema", &schema, MAX_DATABASE_NAME)?;
+    state.sessions.use_schema(session_id, &schema).await.app()
+}
+
 /// Closes a session. `force` discards uncommitted work.
 #[tauri::command]
 #[specta::specta]

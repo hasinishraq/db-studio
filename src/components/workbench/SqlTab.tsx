@@ -1,3 +1,4 @@
+import { EXPORT_LABELS, usePrefs } from '../../api/settings';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Group, Panel, Separator } from 'react-resizable-panels';
@@ -80,6 +81,7 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
   const [store, setStore] = useState<ResultStore | null>(null);
   const [active, setActive] = useState(0);
   const log = useRunLog();
+  const prefs = usePrefs();
   // The last rows shown stay on screen when a later statement returns none.
   const [kept, setKept] = useState<{ store: ResultStore; sql: string } | null>(null);
   const [stale, setStale] = useState(false);
@@ -258,6 +260,12 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
           >
             <span className="text-muted">in</span>
             <span className="font-bold">{sessions[tab.profileId]?.database}</span>
+            {sessions[tab.profileId]?.schema && (
+              <>
+                <span className="ml-1 border-l border-line pl-2 text-muted">schema</span>
+                <span className="font-bold">{sessions[tab.profileId]?.schema}</span>
+              </>
+            )}
           </span>
         )}
         {runId ? (
@@ -272,14 +280,17 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
         <Button disabled={!session} onClick={() => void explain()}>
           Explain
         </Button>
+        <Button disabled={!session} title="Change the format in Settings" onClick={() => void exportResults(prefs.exportFormat)}>
+          Export as {EXPORT_LABELS[prefs.exportFormat]}
+        </Button>
         <Select
           aria-label="Export results"
-          className="w-28"
+          className="w-32"
           value=""
           disabled={!session}
           onChange={(e) => void exportResults(e.target.value as ExportFormat)}
         >
-          <option value="">Export</option>
+          <option value="">Other format</option>
           <option value="Csv">CSV</option>
           <option value="JsonLines">JSON lines</option>
           <option value="Xlsx">Excel</option>

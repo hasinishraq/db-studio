@@ -187,6 +187,8 @@ pub struct SessionInfo {
     pub server: ServerInfo,
     /// The database unqualified names resolve in, if one is chosen.
     pub database: Option<String>,
+    /// PostgreSQL: the schema unqualified names resolve in first.
+    pub schema: Option<String>,
 }
 
 /// Which stored secret an IPC call refers to.

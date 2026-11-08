@@ -66,7 +66,7 @@ await js(`
   window.t = {
     byText: (text, tag='button') => [...document.querySelectorAll(tag)].find(e => e.textContent.trim() === text && e.offsetParent !== null),
     click: (text) => { const e = t.byText(text); if (!e) throw new Error('no button ' + text); e.click(); return true; },
-    label: (name) => [...document.querySelectorAll('label')].find(l => l.textContent.trim().startsWith(name)),
+    label: (name) => [...document.querySelectorAll('label')].find(l => l.offsetParent !== null && l.textContent.trim().startsWith(name)),
     fill: (name, value) => {
       const l = t.label(name); const i = l?.querySelector('input,select');
       if (!i) throw new Error('no field ' + name);
@@ -141,7 +141,8 @@ const mouse = async (points) => {
     await sleep(40);
   }
 };
-const bold = () => js(`[...document.querySelectorAll('[aria-current="true"]')].map((e) => e.textContent.trim()).join(',')`);
+const bold = () => js(`[...document.querySelectorAll('[aria-current="true"]:not([data-level="schema"])')].map((e) => e.textContent.trim()).join(',')`);
+const boldSchema = () => js(`[...document.querySelectorAll('[aria-current="true"][data-level="schema"]')].map((e) => e.textContent.trim()).join(',')`);
 const logText = () => js(`[...document.querySelectorAll('[aria-label="Run log"]')].filter((e) => e.offsetParent).map((e) => e.innerText).join(' ')`);
 const review = async (name) => {
   await until(() => has(`Run on ${name}`));
@@ -195,6 +196,7 @@ await shot('20-databases');
 await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'studio' && b.offsetParent).click()`);
 check('choosing one moves the bold mark', await until(async () => (await bold()) === 'studio'), await bold());
 check('its schemas appear under it', await until(() => has('public')));
+check('the schema in use is bold too', await until(async () => (await boldSchema()) === 'public'), await boldSchema());
 
 await js(`t.click('New query')`);
 await until(() => js(`!!document.querySelector('.monaco-editor textarea')`));
@@ -285,6 +287,33 @@ await shot('29-results-closed');
 await run(`SELECT id, name FROM d3_parent ORDER BY id`);
 check('the next run opens them again', await until(() => js(`[...document.querySelectorAll('[aria-label="Query results"]')].some((e) => e.offsetParent && e.innerText.includes('four'))`)));
 
+// Settings take effect: NULL text, a row limit, row height and editor font.
+const openSettings = async () => {
+  await js(`document.querySelector('[aria-label="Settings"]').click()`);
+  await until(() => has('Changes save as you make them') || has('Saved'));
+};
+const backToQuery = async () => {
+  await js(`[...document.querySelectorAll('[role=tab]')].find((e) => e.textContent === 'New query').click()`);
+  await sleep(300);
+};
+await openSettings();
+check('settings are split into sections', await js(`!!document.querySelector('nav[aria-label="Settings sections"]')`));
+await js(`t.fill('Show empty values as', 'nil'); t.fill('Stop reading a result after', '2'); t.fill('Row height', 'Roomy'); t.fill('Font size', '18');`);
+check('settings save as they change', await until(() => has('Saved'), 5000));
+await shot('30-settings');
+await backToQuery();
+await run(`SELECT NULL AS nothing, n FROM generate_series(1, 4) n`);
+const grid = () => js(`[...document.querySelectorAll('[aria-label="Query results"]')].find((e) => e.offsetParent)?.innerText ?? ''`);
+check('NULL shows as the chosen text', await until(async () => (await grid()).includes('nil')), (await grid()).slice(0, 80));
+check('the row limit stops the read', await until(async () => (await logText()).includes('2 rows returned') && (await logText()).includes('stopped at the limit')));
+check('rows are roomier', await js(`[...document.querySelectorAll('[aria-label="Query results"] [role=row]')].some((r) => r.offsetParent && Math.round(r.getBoundingClientRect().height) === 32)`));
+check('the editor font changed', await until(() => js(`[...document.querySelectorAll('.monaco-editor .view-lines')].some((e) => e.offsetParent && getComputedStyle(e).fontSize === '18px')`)));
+check('the Export button names its format', await has('Export as CSV'));
+await openSettings();
+await js(`t.fill('Show empty values as', 'NULL'); t.fill('Stop reading a result after', '0'); t.fill('Row height', 'Compact'); t.fill('Font size', '13');`);
+await sleep(1200);
+await backToQuery();
+
 // A table tab: selected rows only.
 await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'public' && b.offsetParent).click()`);
 await until(() => js(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'd3_parent' && b.offsetParent)`));
@@ -371,6 +400,22 @@ await js(`t.click('Apply to studio')`);
 await review(PG);
 check('the log counts what ran', await until(async () => (await logText()).includes('2 of 2 statements ran')));
 check('the diagram now shows the live tables', await until(async () => (await boxes()).includes('d3_imported_b') && !(await has('Nothing has been applied'))));
+
+// Choosing a schema: unqualified names then resolve in it.
+await js(`[...document.querySelectorAll('[role=tab]')].find((e) => e.textContent === 'New query').click()`);
+await sleep(300);
+await run(`DROP SCHEMA IF EXISTS d3_other CASCADE; CREATE SCHEMA d3_other; CREATE TABLE d3_other.only_here (id int)`, PG);
+await js(`document.querySelectorAll('[aria-label="Collapse ${PG}"]').length || document.querySelector('[aria-label="Expand ${PG}"]')?.click()`);
+check('a new schema is listed', await until(() => js(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'd3_other' && b.offsetParent)`), 10000));
+await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'd3_other' && b.offsetParent).click()`);
+check('choosing a schema makes it bold', await until(async () => (await boldSchema()) === 'd3_other'), await boldSchema());
+check('the database stays bold as well', (await bold()) === 'studio', await bold());
+check('the toolbar names the schema', await until(() => js(`[...document.querySelectorAll('[title="Queries run in this database"]')].some((e) => e.offsetParent && e.textContent.includes('schema') && e.textContent.includes('d3_other'))`)));
+await run(`SELECT count(*) AS found FROM only_here`);
+check('unqualified names resolve in the chosen schema', await until(() => js(`[...document.querySelectorAll('[aria-label="Query results"]')].some((e) => e.offsetParent && e.innerText.includes('found'))`)));
+await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'public' && b.offsetParent).click()`);
+await until(async () => (await boldSchema()) === 'public');
+await run(`DROP SCHEMA d3_other CASCADE`, PG);
 
 // A new database, made from the side panel.
 await js(`[...document.querySelectorAll('[role=tab]')].find((e) => e.textContent === 'New query').click()`);

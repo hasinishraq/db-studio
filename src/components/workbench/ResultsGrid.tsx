@@ -1,21 +1,22 @@
+import { ROW_HEIGHTS, usePrefs } from '../../api/settings';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ColumnMeta, Value } from '../../bindings';
 import { cellText, type ResultStore, type StatementResult } from '../../lib/resultStore';
 import { Button, Input } from '../ui';
 
-const ROW_HEIGHT = 24;
 const DEFAULT_WIDTH = 160;
 
-function Cell({ value, width }: { value: Value | undefined; width: number }) {
+function Cell({ value, width, nullText }: { value: Value | undefined; width: number; nullText: string }) {
   const isNull = value?.t === 'Null';
+  const text = isNull ? nullText : cellText(value);
   return (
     <div
       style={{ width }}
-      className={`shrink-0 truncate border-r border-line px-2 font-mono text-xs leading-6 ${isNull ? 'italic text-muted' : ''}`}
-      title={cellText(value)}
+      className={`flex shrink-0 items-center truncate border-r border-line px-2 font-mono text-xs ${isNull ? 'italic text-muted' : ''}`}
+      title={text}
     >
-      {cellText(value)}
+      <span className="truncate">{text}</span>
     </div>
   );
 }
@@ -44,6 +45,8 @@ export function ResultsGrid({
   pickRef?: MutableRefObject<(() => GridPick | null) | null>;
 }) {
   useSyncExternalStore(store.subscribe, store.snapshot);
+  const prefs = usePrefs();
+  const ROW_HEIGHT = ROW_HEIGHTS[prefs.rowDensity];
   const parent = useRef<HTMLDivElement>(null);
   const [widths, setWidths] = useState<Record<number, number>>({});
   const [sort, setSort] = useState<{ column: number; descending: boolean } | null>(null);
@@ -78,6 +81,9 @@ export function ResultsGrid({
     estimateSize: () => ROW_HEIGHT,
     overscan: 20,
   });
+
+  // Rows change height with the density setting.
+  useEffect(() => virtual.measure(), [ROW_HEIGHT, virtual]);
 
   const sourceIndex = useCallback((shown: number) => (order ? (order[shown] ?? -1) : shown), [order]);
 
@@ -236,7 +242,7 @@ export function ResultsGrid({
               onClick={(event) => clickRow(item.index, event)}
             >
               {statement.columns.map((_, column) => (
-                <Cell key={column} value={rowAt(item.index)?.[column]} width={width(column)} />
+                <Cell key={column} value={rowAt(item.index)?.[column]} width={width(column)} nullText={prefs.nullText} />
               ))}
             </div>
           ))}

@@ -160,6 +160,7 @@ impl Driver for PostgresDriver {
             version,
             captured,
             pinned: Arc::new(Mutex::new(None)),
+            default_schema: std::sync::RwLock::new(None),
         }))
     }
 }
@@ -173,12 +174,32 @@ pub(crate) struct PgSession {
     captured: CapturedChain,
     /// The connection holding a manual transaction.
     pinned: Arc<Mutex<Option<Object>>>,
+    /// The chosen schema. Pooled connections keep their settings, so each is pointed at it when taken.
+    default_schema: std::sync::RwLock<Option<String>>,
+}
+
+/// Puts the chosen schema first, keeping `public` for anything installed there.
+fn search_path(schema: &str) -> String {
+    let first = studio_db::sql::quote_ident(Engine::Postgres, schema);
+    if schema == "public" {
+        format!("SET search_path TO {first}")
+    } else {
+        format!("SET search_path TO {first}, public")
+    }
 }
 
 impl PgSession {
     /// A free pooled connection, for metadata and paging.
     pub(crate) async fn free(&self) -> Result<Object, DbError> {
-        self.pool.get().await.map_err(pool_error)
+        let object = self.pool.get().await.map_err(pool_error)?;
+        let chosen = self.default_schema.read().ok().and_then(|name| name.clone());
+        if let Some(schema) = chosen {
+            client(&object)
+                .batch_execute(&search_path(&schema))
+                .await
+                .map_err(map_error)?;
+        }
+        Ok(object)
     }
 
     async fn finish(&self, sql: &str) -> Result<(), DbError> {
@@ -208,6 +229,27 @@ impl Session for PgSession {
 
     async fn list_databases(&self) -> Result<Vec<String>, DbError> {
         crate::metadata::list_databases(self).await
+    }
+
+    async fn current_schema(&self) -> Result<Option<String>, DbError> {
+        let object = self.free().await?;
+        let row = client(&object)
+            .query_one("SELECT current_schema()::text", &[])
+            .await
+            .map_err(map_error)?;
+        row.try_get(0).map_err(map_error)
+    }
+
+    async fn use_schema(&self, name: &str) -> Result<(), DbError> {
+        let object = self.pool.get().await.map_err(pool_error)?;
+        client(&object)
+            .batch_execute(&search_path(name))
+            .await
+            .map_err(map_error)?;
+        if let Ok(mut slot) = self.default_schema.write() {
+            *slot = Some(name.to_owned());
+        }
+        Ok(())
     }
 
     async fn list_schemas(&self) -> Result<Vec<SchemaRef>, DbError> {

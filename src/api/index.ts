@@ -83,6 +83,7 @@ export const api = {
   },
   listDatabases: (session: SessionId) => unwrap(commands.listDatabases(session)),
   switchDatabase: (session: SessionId, database: string) => unwrap(commands.useDatabase(session, database)),
+  switchSchema: (session: SessionId, schema: string) => unwrap(commands.useSchema(session, schema)),
   exportSchema: (session: SessionId, schema: string) => unwrap(commands.exportSchema(session, schema)),
   openSchemaFile: () => unwrap(commands.openSchemaFile()),
   outlineSchema: (sql: string, engine: Engine) => unwrap(commands.outlineSchema(sql, engine)),

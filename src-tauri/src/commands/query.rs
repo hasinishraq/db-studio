@@ -78,6 +78,15 @@ pub fn mask_rows(masks: &Masks, columns: &[ColumnMeta], rows: &mut [Vec<Value>])
     }
 }
 
+/// The limits the user set for queries they run. Zero means none.
+pub fn run_options(settings: &studio_types::Settings) -> RunOptions {
+    RunOptions {
+        max_rows: (settings.row_limit > 0).then_some(u64::from(settings.row_limit)),
+        timeout: (settings.statement_timeout_secs > 0)
+            .then(|| std::time::Duration::from_secs(u64::from(settings.statement_timeout_secs))),
+    }
+}
+
 /// Runs a script, relaying events to `emit`, and records it in the history.
 pub async fn run(
     store: &Store,
@@ -114,8 +123,9 @@ pub async fn run(
     });
     let started_at = chrono::Utc::now().timestamp_millis();
     let started = Instant::now();
+    let options = run_options(&store.get_settings().await.app()?);
     let result = sessions
-        .run_user(session, &sql, approval, run_id, RunOptions::default(), sink)
+        .run_user(session, &sql, approval, run_id, options, sink)
         .await;
     let _ = relay.await;
 

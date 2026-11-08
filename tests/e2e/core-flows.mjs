@@ -61,7 +61,7 @@ await js(`
   window.t = {
     byText: (text, tag='button') => [...document.querySelectorAll(tag)].find(e => e.textContent.trim() === text && e.offsetParent !== null),
     click: (text) => { const e = t.byText(text); if (!e) throw new Error('no button ' + text); e.click(); return true; },
-    label: (name) => [...document.querySelectorAll('label')].find(l => l.textContent.trim().startsWith(name)),
+    label: (name) => [...document.querySelectorAll('label')].find(l => l.offsetParent !== null && l.textContent.trim().startsWith(name)),
     fill: (name, value) => {
       const l = t.label(name); const i = l?.querySelector('input,select');
       if (!i) throw new Error('no field ' + name);

@@ -1,3 +1,4 @@
+import { EXPORT_LABELS, ROW_HEIGHTS, usePrefs } from '../../api/settings';
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage } from '../../api';
@@ -220,6 +221,7 @@ export function TableTab({ tab }: { tab: TableTabData }) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const log = useRunLog();
+  const prefs = usePrefs();
   const table: TableRef = tab.table;
   const key = ['schema', tab.profileId, 'page', table, offset, filters, sort];
 
@@ -334,8 +336,11 @@ export function TableTab({ tab }: { tab: TableTabData }) {
               Delete {selected.size || ''} rows
             </Button>
             <Button onClick={() => setImporting(true)}>Import CSV</Button>
-            <Select aria-label="Export table" className="w-28" value="" onChange={(e) => void exportTable(e.target.value)}>
-              <option value="">{selected.size > 0 ? `Export ${selected.size}` : 'Export'}</option>
+            <Button title="Change the format in Settings" onClick={() => void exportTable(prefs.exportFormat)}>
+              Export {selected.size > 0 ? `${selected.size} ` : ''}as {EXPORT_LABELS[prefs.exportFormat]}
+            </Button>
+            <Select aria-label="Export table" className="w-32" value="" onChange={(e) => void exportTable(e.target.value)}>
+              <option value="">Other format</option>
               <option value="Csv">CSV</option>
               <option value="JsonLines">JSON lines</option>
               <option value="Xlsx">Excel</option>
@@ -409,9 +414,10 @@ export function TableTab({ tab }: { tab: TableTabData }) {
                   {columns.map((column, cell) => (
                     <td
                       key={column.name}
-                      className={`max-w-xs truncate border-b border-r border-line/40 px-2 leading-6 ${row[cell]?.t === 'Null' ? 'italic text-muted' : ''}`}
+                      style={{ height: ROW_HEIGHTS[prefs.rowDensity] }}
+                      className={`max-w-xs truncate border-b border-r border-line/40 px-2 ${row[cell]?.t === 'Null' ? 'italic text-muted' : ''}`}
                     >
-                      {cellText(row[cell])}
+                      {row[cell]?.t === 'Null' ? prefs.nullText : cellText(row[cell])}
                     </td>
                   ))}
                 </tr>

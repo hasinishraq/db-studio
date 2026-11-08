@@ -245,3 +245,41 @@ async fn a_blank_database_opens_postgres_and_lists_the_rest() {
     );
     session.close().await;
 }
+
+/// A chosen schema reaches every pooled connection, so unqualified names find its tables.
+#[tokio::test]
+async fn a_chosen_schema_applies_to_every_connection() {
+    let Some(url) = env("TEST_PG_URL") else { return };
+    let session = PostgresDriver
+        .connect(&config(&url, TlsMode::Disable))
+        .await
+        .unwrap();
+    let exec = |sql: &'static str| {
+        let session = &session;
+        async move {
+            let (sink, mut inbox) = mpsc::channel(8);
+            let drain = tokio::spawn(async move { while inbox.recv().await.is_some() {} });
+            let result = session.execute(sql, ExecOptions::default(), sink).await;
+            drain.await.unwrap();
+            result
+        }
+    };
+    exec("DROP SCHEMA IF EXISTS studio_chosen CASCADE").await.unwrap();
+    exec("CREATE SCHEMA studio_chosen").await.unwrap();
+    exec("CREATE TABLE studio_chosen.only_here (id int)")
+        .await
+        .unwrap();
+    assert_eq!(session.current_schema().await.unwrap().as_deref(), Some("public"));
+    assert!(exec("SELECT * FROM only_here").await.is_err());
+
+    session.use_schema("studio_chosen").await.unwrap();
+    assert_eq!(
+        session.current_schema().await.unwrap().as_deref(),
+        Some("studio_chosen")
+    );
+    for _ in 0..6 {
+        exec("SELECT * FROM only_here").await.unwrap();
+    }
+    exec("DROP SCHEMA studio_chosen CASCADE").await.unwrap();
+    session.close().await;
+}

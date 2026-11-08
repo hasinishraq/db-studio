@@ -20,6 +20,8 @@ pub struct FakeLog {
     pub executed: Vec<(String, ExecOptions, ConnScope)>,
     /// Databases chosen with `use_database`.
     pub used_databases: Vec<String>,
+    /// Schemas chosen with `use_schema`.
+    pub used_schemas: Vec<String>,
     /// Calls to `begin`.
     pub begins: u32,
     /// Calls to `commit`.
@@ -153,6 +155,15 @@ impl Session for FakeSession {
 
     async fn list_databases(&self) -> Result<Vec<String>, DbError> {
         Ok(vec!["app".into(), "other".into()])
+    }
+
+    async fn current_schema(&self) -> Result<Option<String>, DbError> {
+        Ok(Some("public".into()))
+    }
+
+    async fn use_schema(&self, name: &str) -> Result<(), DbError> {
+        self.log.lock().unwrap().used_schemas.push(name.to_owned());
+        Ok(())
     }
 
     async fn use_database(&self, name: &str) -> Result<(), DbError> {

@@ -144,13 +144,14 @@ await approveSql(`INSERT INTO e2e_ai VALUES (1, '${SECRET}'), (2, 'Ben'), (3, 'C
 
 // Point the assistant at the stand-in.
 await js(`document.querySelector('[aria-label="Settings"]').click()`);
-await until(() => has('Save settings'));
+await until(() => has('Endpoint'));
 await js(`t.fill('Provider', 'OpenAi')`);
 await sleep(100);
 await js(`t.fill('Endpoint', ${JSON.stringify(endpoint)}); t.fill('Model', 'stand-in');`);
 await sleep(100);
-await js(`t.click('Save settings')`);
-await until(() => has('Saved.'));
+// Settings save as they change.
+await sleep(1200);
+await until(() => has('Saved'));
 
 await js(`document.querySelector('[aria-label="Assistant"]').click()`);
 await until(() => js(`!!document.querySelector('[aria-label="Message"]')`));

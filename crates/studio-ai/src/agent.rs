@@ -181,7 +181,11 @@ impl Engine {
             text.push_str(")\n");
         }
         if let Some(database) = self.sessions.current_database(session).await {
-            text.insert_str(0, &format!("Current database: {database}\n"));
+            let schema = match self.sessions.current_schema(session).await {
+                Some(schema) => format!(", schema {schema}"),
+                None => String::new(),
+            };
+            text.insert_str(0, &format!("Current database: {database}{schema}\n"));
         }
         (text, tables)
     }
@@ -412,7 +416,7 @@ impl Engine {
             Some(schema) => schema,
             None => match self.sessions.list_schemas(session).await {
                 Ok(schemas) => {
-                    let chosen = self.sessions.current_database(session).await;
+                    let chosen = self.sessions.default_namespace(session).await;
                     let chosen = schemas.iter().find(|s| Some(&s.name) == chosen.as_ref());
                     chosen
                         .or(schemas.first())

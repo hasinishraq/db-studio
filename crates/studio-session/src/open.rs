@@ -41,6 +41,7 @@ pub struct OpenSession {
     pub policy: SessionPolicy,
     pub(crate) tx: Mutex<TxState>,
     pub(crate) database: Mutex<Option<String>>,
+    pub(crate) schema: Mutex<Option<String>>,
     /// Keeps a tunnel alive for as long as the session.
     _route: Option<Route>,
 }
@@ -117,12 +118,17 @@ impl SessionManager {
         let (session, route) = self.open(&profile, password, ssh_secret, id).await?;
         let server = session.server_info().await?;
         let database = starting_database(&profile);
+        let schema = match profile.engine {
+            Engine::Postgres => session.current_schema().await.ok().flatten(),
+            _ => None,
+        };
         let info = SessionInfo {
             session_id: id,
             profile_id: profile.id,
             engine: profile.engine,
             server,
             database: database.clone(),
+            schema: schema.clone(),
         };
         let policy = SessionPolicy::of(&profile);
         let open = OpenSession {
@@ -132,6 +138,7 @@ impl SessionManager {
             policy,
             tx: Mutex::new(TxState::default()),
             database: Mutex::new(database),
+            schema: Mutex::new(schema),
             _route: route,
         };
         self.sessions.insert(id, Arc::new(open));
@@ -213,6 +220,49 @@ impl SessionManager {
             engine,
             server: open.session.server_info().await?,
             database: Some(name.to_owned()),
+            schema: None,
+        })
+    }
+
+    /// The schema a PostgreSQL session resolves unqualified names in first.
+    pub async fn current_schema(&self, id: SessionId) -> Option<String> {
+        self.get(id).ok()?.schema.lock().await.clone()
+    }
+
+    /// Where unqualified names go: the schema on PostgreSQL, the database on MySQL.
+    pub async fn default_namespace(&self, id: SessionId) -> Option<String> {
+        let open = self.get(id).ok()?;
+        match open.engine() {
+            Engine::Postgres => open.schema.lock().await.clone(),
+            _ => open.database.lock().await.clone(),
+        }
+    }
+
+    /// Chooses the schema unqualified names resolve in first. PostgreSQL only.
+    pub async fn use_schema(&self, id: SessionId, name: &str) -> Result<SessionInfo, SessionError> {
+        let open = self.get(id)?;
+        if open.engine() != Engine::Postgres {
+            return Err(SessionError::Refused(
+                "only PostgreSQL has schemas inside a database".to_owned(),
+            ));
+        }
+        let tx = *open.tx.lock().await;
+        if tx.dirty || tx.mode == TxMode::Manual {
+            return Err(SessionError::DirtyTransaction);
+        }
+        if !open.session.list_schemas().await?.iter().any(|s| s.name == name) {
+            return Err(SessionError::Refused(format!("there is no schema named {name}")));
+        }
+        open.session.use_schema(name).await?;
+        *open.schema.lock().await = Some(name.to_owned());
+        let database = open.database.lock().await.clone();
+        Ok(SessionInfo {
+            session_id: id,
+            profile_id: open.profile.id,
+            engine: open.engine(),
+            server: open.session.server_info().await?,
+            database,
+            schema: Some(name.to_owned()),
         })
     }
 

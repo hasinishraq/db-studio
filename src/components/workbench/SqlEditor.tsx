@@ -1,3 +1,4 @@
+import { usePrefs } from '../../api/settings';
 import { useEffect, useRef } from 'react';
 import * as monaco from 'monaco-editor';
 import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
@@ -9,13 +10,13 @@ monaco.editor.defineTheme('studio-dark', {
   base: 'vs-dark',
   inherit: true,
   rules: [],
-  colors: { 'editor.background': '#1b2733', 'editorGutter.background': '#1b2733' },
+  colors: { 'editor.background': '#121b24', 'editorGutter.background': '#121b24' },
 });
 monaco.editor.defineTheme('studio-light', {
   base: 'vs',
   inherit: true,
   rules: [],
-  colors: { 'editor.background': '#ffffff' },
+  colors: { 'editor.background': '#f6f8fa', 'editorGutter.background': '#f6f8fa' },
 });
 
 /** Completion source, replaced whenever the active connection's schema loads. */
@@ -67,6 +68,8 @@ export function SqlEditor({
   columns: ColumnInfo[];
   handle: React.RefObject<EditorHandle | null>;
 }) {
+  const prefs = usePrefs();
+  const instance = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const host = useRef<HTMLDivElement>(null);
   const run = useRef(onRun);
   run.current = onRun;
@@ -90,6 +93,7 @@ export function SqlEditor({
       fontSize: 13,
       scrollBeyondLastLine: false,
     });
+    instance.current = editor;
     editor.onDidChangeModelContent(() => change.current(editor.getValue()));
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => run.current());
     handle.current = {
@@ -119,10 +123,28 @@ export function SqlEditor({
         if (model) monaco.editor.setModelMarkers(model, 'run', []);
       },
     };
-    return () => editor.dispose();
+    return () => {
+      instance.current = null;
+      editor.dispose();
+    };
     // The editor is created once; later values come from the user typing in it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Settings change while the editor is open, so they apply to it in place.
+  useEffect(() => {
+    const editor = instance.current;
+    if (!editor) return;
+    editor.updateOptions({
+      fontSize: prefs.editorFontSize,
+      wordWrap: prefs.editorWordWrap ? 'on' : 'off',
+      lineNumbers: prefs.editorLineNumbers ? 'on' : 'off',
+      minimap: { enabled: prefs.editorMinimap },
+      quickSuggestions: prefs.editorSuggestions,
+      suggestOnTriggerCharacters: prefs.editorSuggestions,
+    });
+    editor.getModel()?.updateOptions({ tabSize: prefs.editorTabSize, insertSpaces: true });
+  }, [prefs.editorFontSize, prefs.editorWordWrap, prefs.editorLineNumbers, prefs.editorMinimap, prefs.editorSuggestions, prefs.editorTabSize]);
 
   return <div ref={host} className="h-full w-full" />;
 }

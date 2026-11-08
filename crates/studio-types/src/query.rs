@@ -430,9 +430,10 @@ pub struct PlannedSql {
 }
 
 /// A file format for export.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum ExportFormat {
     /// Comma-separated values.
+    #[default]
     Csv,
     /// One JSON object per line.
     JsonLines,

@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, errorMessage } from '../../api';
 import { cancelQuery, cancelTurn, reviewQuery, sendTurn } from '../../api/ai';
+import { usePrefs } from '../../api/settings';
 import type { ConnectionProfile } from '../../bindings';
 import { newId, useStudio } from '../../context/Studio';
 import { chooseChart } from '../../lib/chart';
@@ -142,8 +143,12 @@ export function AiTab() {
   const [turns, setTurns] = useState<TurnView[]>([]);
   const [text, setText] = useState('');
   const [running, setRunning] = useState<string | null>(null);
-  const [autoRun, setAutoRun] = useState(true);
-  const [share, setShare] = useState(false);
+  // Each chat starts from the Settings defaults and can be changed here.
+  const prefs = usePrefs();
+  const [autoRunChoice, setAutoRun] = useState<boolean | null>(null);
+  const [shareChoice, setShare] = useState<boolean | null>(null);
+  const autoRun = autoRunChoice ?? prefs.aiAutoRun;
+  const share = shareChoice ?? prefs.aiShareRows;
   const [error, setError] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const { data: conversations = [] } = useQuery({ queryKey: ['conversations'], queryFn: api.aiConversations });

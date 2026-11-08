@@ -254,6 +254,21 @@ apply. Nothing has been committed; the human reviews and commits.
   clears the bold mark.
 - Checked: Rust and frontend tests, clippy, fmt, E2E 39/39, 20/20 and 61/61 in dark and 61/61 in light.
 
+## After hand-over: schema choice and more settings
+- A PostgreSQL schema can be chosen like a database: bold, "in use", and named in the query toolbar.
+  `use_schema` checks the name, refuses open transactions, and sets `search_path` to the schema then
+  `public` on each pooled connection when taken. The schema in use is read from the server on connect.
+- Settings has sections and saves each change (the API key keeps its own button, for the keychain).
+  New: editor font size, tab size, wrap, line numbers, overview map, suggestions; statement timeout
+  and row limit for queries you run (enforced in Rust; exports and the assistant keep their own);
+  NULL text; row height; open a query tab on connect; the Export button's format.
+- "Run safe reads without asking" and "Let the assistant see result rows" were settings fields that
+  nothing read. They now set the starting value of the matching switches in each new chat. The rules
+  in Rust are unchanged, including each connection's assistant policy.
+- The editor theme used the old background colours; it matches the workspace again.
+- E2E helper `t.label` now ignores hidden labels; it had matched Settings' "Model" for "Mode".
+- Checked: Rust and frontend tests, clippy, fmt, E2E 39/39, 20/20 and 74/74.
+
 ## Verification at hand-over
 - `cargo test --workspace` with every server up, including MySQL TLS: 250 passed, 0 failed, 0 skipped.
 - `npm test`: 34 passed. Clippy, fmt and `cargo deny check` clean.

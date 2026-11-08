@@ -23,6 +23,8 @@ export const commands = {
 	listDatabases: (sessionId: SessionId) => typedError<string[], AppError>(__TAURI_INVOKE("list_databases", { sessionId })),
 	/**  Chooses the default database. On PostgreSQL the returned session replaces this one. */
 	useDatabase: (sessionId: SessionId, database: string) => typedError<SessionInfo, AppError>(__TAURI_INVOKE("use_database", { sessionId, database })),
+	/**  Chooses the schema unqualified names resolve in first. PostgreSQL only. */
+	useSchema: (sessionId: SessionId, schema: string) => typedError<SessionInfo, AppError>(__TAURI_INVOKE("use_schema", { sessionId, schema })),
 	/**  Closes a session. `force` discards uncommitted work. */
 	disconnect: (sessionId: SessionId, force: boolean) => typedError<null, AppError>(__TAURI_INVOKE("disconnect", { sessionId, force })),
 	/**  Lists schemas. */
@@ -809,6 +811,13 @@ values: CellValue[] } |
 /**  One identifying set per row. */
 keys: CellValue[][] };
 
+/**  How tall result rows are. */
+export type RowDensity = 
+/**  More rows on screen. */
+"Compact" | 
+/**  Easier to read. */
+"Roomy";
+
 /**  Messages on a run's channel. */
 export type RunEvent = 
 /**  A statement began. */
@@ -911,6 +920,8 @@ export type SessionInfo = {
 	server: ServerInfo,
 	/**  The database unqualified names resolve in, if one is chosen. */
 	database: string | null,
+	/**  PostgreSQL: the schema unqualified names resolve in first. */
+	schema: string | null,
 };
 
 /**  All preferences. Unknown or missing fields fall back to defaults. */
@@ -933,6 +944,30 @@ export type Settings = {
 	encryptStore?: boolean,
 	/**  Hide masked columns in the grid too. */
 	maskInGrid?: boolean,
+	/**  Editor font size in pixels. */
+	editorFontSize?: number,
+	/**  Spaces per tab in the editor. */
+	editorTabSize?: number,
+	/**  Wrap long lines in the editor. */
+	editorWordWrap?: boolean,
+	/**  Show line numbers. */
+	editorLineNumbers?: boolean,
+	/**  Show the editor's overview map. */
+	editorMinimap?: boolean,
+	/**  Suggest names while typing. */
+	editorSuggestions?: boolean,
+	/**  Give up on a statement after this many seconds; 0 means never. */
+	statementTimeoutSecs?: number,
+	/**  Stop reading a result after this many rows; 0 means no limit. */
+	rowLimit?: number,
+	/**  What an empty cell shows. */
+	nullText?: string,
+	/**  Result row height. */
+	rowDensity?: RowDensity,
+	/**  Open a query tab when a connection opens. */
+	openQueryOnConnect?: boolean,
+	/**  The format the Export button uses. */
+	exportFormat?: ExportFormat,
 };
 
 /**  One sort key. */

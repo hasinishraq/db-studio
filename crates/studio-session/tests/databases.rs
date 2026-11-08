@@ -97,3 +97,34 @@ async fn a_dropped_mysql_database_is_forgotten() {
     h.manager.list_schemas(id).await.unwrap();
     assert_eq!(h.manager.current_database(id).await, None);
 }
+
+#[tokio::test]
+async fn postgres_reports_and_changes_its_schema() {
+    let h = harness();
+    let info = h.manager.connect(profile(), None, None).await.unwrap();
+    assert_eq!(info.schema.as_deref(), Some("public"));
+    let chosen = h.manager.use_schema(info.session_id, "public").await.unwrap();
+    assert_eq!(chosen.session_id, info.session_id);
+    assert_eq!(chosen.schema.as_deref(), Some("public"));
+    assert_eq!(h.driver.log.lock().unwrap().used_schemas, ["public"]);
+}
+
+#[tokio::test]
+async fn a_schema_choice_is_checked_like_a_database_choice() {
+    let h = harness();
+    let id = h.manager.connect(profile(), None, None).await.unwrap().session_id;
+    let unknown = h.manager.use_schema(id, "x\"; SET search_path TO evil; --").await;
+    assert!(matches!(unknown, Err(SessionError::Refused(_))));
+    h.manager.set_tx_mode(id, TxMode::Manual).await.unwrap();
+    assert!(matches!(
+        h.manager.use_schema(id, "public").await,
+        Err(SessionError::DirtyTransaction)
+    ));
+    assert!(h.driver.log.lock().unwrap().used_schemas.is_empty());
+
+    let my = h.manager.connect(mysql(), None, None).await.unwrap().session_id;
+    assert!(matches!(
+        h.manager.use_schema(my, "public").await,
+        Err(SessionError::Refused(_))
+    ));
+}
