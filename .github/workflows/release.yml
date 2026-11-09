@@ -24,6 +24,21 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "DB Studio ${{ github.ref_name }}"
-          releaseBody: "See CHANGELOG.md for details."
+          releaseBody: |
+            DB Studio is a desktop client for PostgreSQL, MySQL, MariaDB and SQLite, with an AI assistant that runs safe reads by itself and changes data only after you approve the exact statement.
+
+            ## Download (Windows only)
+
+            - **`..._x64-setup.exe`**: the recommended installer.
+            - **`..._x64_en-US.msi`**: for managed or silent installs.
+
+            macOS and Linux builds are not published yet. You can build from source; see the README.
+
+            ## Documentation
+
+            - User guide: https://hasinishraq.github.io/db-studio-documentation/user-guide/
+            - Full documentation: https://hasinishraq.github.io/db-studio-documentation/
+
+            **Full list of commits:** https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-rc') }}
