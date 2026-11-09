@@ -3,16 +3,13 @@
 ## What this is
 Desktop database client (PostgreSQL, MySQL/MariaDB, SQLite) with a safe AI assistant.
 Tauri 2 + Rust workspace backend, React + TypeScript frontend in src/.
-Full plan: docs/BUILD_GUIDE.md. Current state: docs/PROGRESS.md. Read both before working.
 
 ## How to work
-- Work on ONE phase of docs/BUILD_GUIDE.md at a time. Do not build features from later phases.
 - Always propose a plan (files, public API, tests) and wait for approval before writing code.
 - Every phase ships with its tests. Run the phase gate before saying you are done.
 - When unsure of a crate API, check docs.rs for the version in Cargo.lock or run `cargo doc`. Never guess.
 - Add dependencies with `cargo add` (workspace deps go in the root [workspace.dependencies]).
 - If the same error survives two attempts, stop and explain the root cause and options.
-- At the end of a phase, update docs/PROGRESS.md (done, decisions, deviations, gaps, next).
 - Never commit; the human reviews and commits.
 
 ## Layout
