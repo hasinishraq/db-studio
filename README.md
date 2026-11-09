@@ -8,6 +8,12 @@ by itself and changes data only after you approve the exact statement.
 - **[User guide](https://hasinishraq.github.io/db-studio-documentation/user-guide/)**: how to connect, query, edit data and use the assistant.
 - **[Full documentation](https://hasinishraq.github.io/db-studio-documentation/)**: architecture, safety model, development and releases.
 
+## Download
+
+**Windows only for now.** Get the latest installer (`.msi` or `-setup.exe`) from the
+[Releases page](https://github.com/hasinishraq/db-studio/releases). macOS and Linux builds are not
+published yet; on those systems you can build from source (see [Run it](#run-it)).
+
 ![The explorer with connections to several databases](screenshots/01-explorer-connections.png)
 
 ## Technology
