@@ -330,7 +330,7 @@ apply. Nothing has been committed; the human reviews and commits.
   never stops the query, and the model is told why no chart was drawn. The prompt says when and
   how to ask. `AiEvent::QueryResult.chart` carries it to the UI.
 - Every result has a "Show as" chooser (table or any form); forms that do not fit are greyed out
-  with the reason (`buildChart` in `lib/chart.ts`). Pie and donut fold past 6 parts into Other and
+  with the reason (`buildChart` in `lib/chart.ts`). Pie and donut fold past 5 parts (one per series colour) into Other and
   refuse negatives; bars stop at 40 rows, horizontal at 50, scatter at 3 series.
 - `ResultChart` draws everything in one SVG (title, legend for 2+ series, ticks, tooltips). "Save
   chart" sends a standalone light SVG to `export_diagram`, so PNG, JPEG and PDF reuse the diagram
@@ -380,6 +380,29 @@ apply. Nothing has been committed; the human reviews and commits.
 - The MSI upgrade code is pinned to the old derived one (`C83131D2-971B-5CC4-8418-CC52CB698DE9`),
   so installing replaces an "AI DB Studio" install instead of sitting beside it.
 - The legacy importer still looks for the old Electron app under its old name, on purpose.
+
+## After hand-over: screenshots against real servers
+- 54 light-theme screenshots in `screenshots/` (index in its `README.md`), taken from the debug
+  build with `tests/e2e/screenshots/*.mjs` against PostgreSQL 17.6, MySQL 8.4.6, MariaDB 11.4.8
+  and SQLite, seeded by `scripts/seed/` (about 10k rows in the biggest tables, generated).
+- The assistant shots used a real model (OpenRouter, `nvidia/nemotron-3.5-super-vl:free`): 1 test
+  request and 8 chat turns. It supports tool calls and chart requests. The key was typed into the
+  app's keychain field only; it is in no file.
+- With the servers up, the real-server cases of `grid_real.rs` now pass on all four engines, and
+  the full workspace passes.
+- Fixed: a pie with 6 parts reused the first colour for the 6th slice. Pies now show at most 5
+  parts (one per series colour) and fold the rest into a grey Other.
+- Found, not fixed:
+  - MySQL and MariaDB: a `SELECT SLEEP(n)` stopped by the statement time limit is reported as a
+    success (`1`), because the server returns 1 rather than an error. PostgreSQL reports it.
+  - The command palette closes on a click outside it but not on Escape.
+  - "Commit or roll back first" under a connection stays after rolling back.
+  - The Settings section list highlights the wrong section while scrolling.
+  - Deleting a connection has no confirmation.
+  - The Assistant tab forgets its chosen connection when the tab is closed and reopened.
+  - Diagram lines are drawn under tables and can look attached to the wrong table; positions are
+    not saved (known).
+  - Bar chart labels are cut at 10 characters.
 
 ## Verification at hand-over
 - `cargo test --workspace` with every server up, including MySQL TLS: 250 passed, 0 failed, 0 skipped.

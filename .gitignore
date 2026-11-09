@@ -1,13 +1,37 @@
+# ---- Rust ----
 target/
+*.snap.new
+*.pending-snap
+
+# ---- Node / frontend ----
 node_modules/
 dist/
+*.tsbuildinfo
+.vite/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Tauri ----
+src-tauri/gen/
+src-tauri/target/
+
+# ---- Environment and secrets ----
 .env*
+*.pem
+*.p12
+*.pfx
+
+# ---- Local databases ----
 *.db
 *.db-shm
 *.db-wal
-src-tauri/gen/
-*.snap.new
-# test-only key material is generated, never committed
+*.sqlite
+*.sqlite3
+
+# ---- Test-only key material is generated, never committed ----
 docker/tls/*.crt
 docker/tls/*.key
 docker/tls/*.srl
@@ -15,3 +39,37 @@ docker/tls/*.csr
 docker/ssh/test_key
 docker/ssh/test_key.pub
 .test-services/
+
+# ---- Test output ----
+tests/e2e/screenshots/
+test-results/
+playwright-report/
+
+# ---- MkDocs output ----
+documentation/site/
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- Editors and IDEs ----
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- OS files ----
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ---- Claude Code local settings ----
+.claude/settings.local.json
+
+# ---- Markdown: ignore every .md file except README.md ----
+*.md
+!README.md

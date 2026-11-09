@@ -68,7 +68,8 @@ export const CHART_TYPES: { type: ChartType; label: string }[] = [
 
 /** Categorical slots, in fixed order. Past this, series are cut and pie slices fold to Other. */
 export const MAX_SERIES = 5;
-const MAX_PIE_SLICES = 6;
+/** One slice per categorical colour, so no hue repeats; the tail folds into a grey Other. */
+const MAX_PIE_SLICES = MAX_SERIES;
 const MAX_SCATTER_SERIES = 3;
 const LIMITS: Partial<Record<ChartType, number>> = {
   bar: 40,

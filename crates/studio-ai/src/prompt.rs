@@ -68,7 +68,7 @@ pub fn build_system_prompt(ctx: &PromptContext<'_>) -> String {
              already aggregated and ordered, and pass chart to run_sql with type, x (the label \
              column) and y (the value columns, as named in the result). Use line or area for time, \
              bar or horizontal_bar to compare, stacked_bar for parts over categories, pie or donut \
-             for a few parts of one whole (at most 6 rows, positive values), scatter for two \
+             for a few parts of one whole (at most 5 rows, positive values), scatter for two \
              numeric columns. Keep bar charts under 40 rows. The app draws the chart from the real \
              rows; never write chart values, image links or chart code yourself.\n\n",
         );

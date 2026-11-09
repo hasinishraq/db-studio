@@ -55,12 +55,12 @@ describe('building charts', () => {
     expect(chart.series).toHaveLength(1);
   });
 
-  it('folds a pie past six parts into Other', () => {
+  it('folds a pie past five parts into Other, so no colour repeats', () => {
     const many = Array.from({ length: 9 }, (_, i) => [text(`p${i}`), int(100 - i), int(0)]);
     const chart = built('donut', columns, many);
-    expect(chart.labels).toHaveLength(6);
+    expect(chart.labels).toHaveLength(5);
     expect(chart.labels.at(-1)).toBe('Other');
-    expect(chart.series[0]?.values.at(-1)).toBe(95 + 94 + 93 + 92);
+    expect(chart.series[0]?.values.at(-1)).toBe(96 + 95 + 94 + 93 + 92);
     expect(chart.folded).toBe(true);
   });
 
