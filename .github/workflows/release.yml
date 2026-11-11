@@ -1,13 +1,50 @@
 name: Release
 on:
+  # Pushing a v* tag builds every platform into a draft release for that tag.
   push: { tags: ["v*"] }
+  # Adds the macOS and Linux builds to a release that already exists,
+  # built from that tag's code. Windows is not rebuilt, so its files are not duplicated.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build macOS and Linux for (for example v0.1.5)"
+        required: true
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  RELEASE_BODY: |
+    DB Studio is a desktop client for PostgreSQL, MySQL, MariaDB and SQLite, with an AI assistant that runs safe reads by itself and changes data only after you approve the exact statement.
+
+    ## Download
+
+    **Windows**
+    - **`..._x64-setup.exe`**: the recommended installer.
+    - **`..._x64_en-US.msi`**: for managed or silent installs.
+
+    **macOS**
+    - **`..._aarch64.dmg`**: Apple Silicon (M1 and later).
+    - **`..._x64.dmg`**: Intel Macs.
+
+    The macOS app is not notarized by Apple. The first time, right-click DB Studio in Applications and choose **Open**, then **Open** again (or allow it in System Settings → Privacy & Security).
+
+    **Linux (x64)**
+    - **`..._amd64.deb`**: Debian, Ubuntu and derivatives.
+    - **`...x86_64.rpm`**: Fedora, RHEL, openSUSE.
+    - **`..._amd64.AppImage`**: any distribution; make it executable and run it.
+
+    ## Documentation
+
+    - User guide: https://hasinishraq.github.io/db-studio-documentation/user-guide/
+    - Full documentation: https://hasinishraq.github.io/db-studio-documentation/
+
+    **Full list of commits:** https://github.com/${{ github.repository }}/commits/${{ inputs.tag || github.ref_name }}
+
 jobs:
-  release:
-    # Releases are built for Windows only for now (MSI and NSIS installers).
+  windows:
+    if: github.event_name == 'push'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,23 +59,47 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "DB Studio ${{ github.ref_name }}"
-          releaseBody: |
-            DB Studio is a desktop client for PostgreSQL, MySQL, MariaDB and SQLite, with an AI assistant that runs safe reads by itself and changes data only after you approve the exact statement.
-
-            ## Download (Windows only)
-
-            - **`..._x64-setup.exe`**: the recommended installer.
-            - **`..._x64_en-US.msi`**: for managed or silent installs.
-
-            macOS and Linux builds are not published yet. You can build from source; see the README.
-
-            ## Documentation
-
-            - User guide: https://hasinishraq.github.io/db-studio-documentation/user-guide/
-            - Full documentation: https://hasinishraq.github.io/db-studio-documentation/
-
-            **Full list of commits:** https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}
+          tagName: ${{ env.TAG }}
+          releaseName: "DB Studio ${{ env.TAG }}"
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          prerelease: ${{ contains(env.TAG, '-rc') }}
+
+  macos-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: macos-latest, target: x86_64-apple-darwin }
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev libdbus-1-dev patchelf pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.target }}" }
+      - uses: Swatinem/rust-cache@v2
+        with: { key: "${{ matrix.target }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Ad-hoc signature: without one, Apple Silicon reports the app as damaged.
+          # There is no Apple Developer certificate, so the app is not notarized.
+          APPLE_SIGNING_IDENTITY: "-"
+        with:
+          tagName: ${{ env.TAG }}
+          releaseName: "DB Studio ${{ env.TAG }}"
+          releaseBody: ${{ env.RELEASE_BODY }}
+          releaseDraft: true
+          prerelease: ${{ contains(env.TAG, '-rc') }}
+          args: --target ${{ matrix.target }}

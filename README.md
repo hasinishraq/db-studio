@@ -10,9 +10,17 @@ by itself and changes data only after you approve the exact statement.
 
 ## Download
 
-**Windows only for now.** Get the latest installer (`.msi` or `-setup.exe`) from the
-[Releases page](https://github.com/hasinishraq/db-studio/releases). macOS and Linux builds are not
-published yet; on those systems you can build from source (see [Run it](#run-it)).
+Get the latest installer from the [Releases page](https://github.com/hasinishraq/db-studio/releases):
+
+| System | File |
+| --- | --- |
+| Windows | `-setup.exe` (recommended) or `.msi` |
+| macOS, Apple Silicon | `_aarch64.dmg` |
+| macOS, Intel | `_x64.dmg` |
+| Linux (x64) | `.deb`, `.rpm` or `.AppImage` |
+
+The macOS app is not notarized by Apple. The first time, right-click DB Studio in Applications and
+choose **Open**, then **Open** again (or allow it in System Settings → Privacy & Security).
 
 ![The explorer with connections to several databases](screenshots/01-explorer-connections.png)
 
