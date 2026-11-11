@@ -62,7 +62,6 @@ function SchemaNode({
   profile,
   search,
   chosen = false,
-  onChoose,
   nested = false,
   menuItems = [],
 }: {
@@ -71,20 +70,21 @@ function SchemaNode({
   profile: ConnectionProfile;
   search: string;
   chosen?: boolean;
-  onChoose?: () => void;
   nested?: boolean;
-  /** Choosing and remembering, from the parent; New table and Diagram are added here. */
+  /** Choosing and remembering, from the parent; Refresh, New table and Diagram are added here. */
   menuItems?: MenuItem[];
 }) {
   // Under a PostgreSQL database the schemas sit one level deeper.
   const indent = nested ? 'pl-3' : 'pl-5';
   const guide = nested ? 'ml-5' : 'ml-7';
   const { openTab } = useStudio();
+  const client = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [creating, setCreating] = useState(false);
   const searching = search.trim().length > 0;
+  const objectsKey = ['schema', profile.id, 'objects', session, schema];
   const { data: objects = [], error } = useQuery({
-    queryKey: ['schema', profile.id, 'objects', session, schema],
+    queryKey: objectsKey,
     queryFn: () => api.listObjects(session, { name: schema }),
     enabled: expanded || searching,
   });
@@ -92,9 +92,15 @@ function SchemaNode({
   const Chevron = expanded || searching ? ChevronDown : ChevronRight;
   const openDiagram = () =>
     openTab({ id: `er:${profile.id}:${schema}`, kind: 'er', title: `${schema} diagram`, profileId: profile.id, schema });
+  /** Fetches the tables and views again, so ones made or dropped elsewhere show. */
+  const refresh = () => {
+    setExpanded(true);
+    void client.invalidateQueries({ queryKey: objectsKey });
+  };
   const { triggers, menu } = useContextMenu(`${schema} actions`, () => [
     ...menuItems,
-    { label: 'New table…', onSelect: () => setCreating(true), separated: menuItems.length > 0 },
+    { label: 'Refresh', onSelect: refresh, separated: menuItems.length > 0 },
+    { label: 'New table…', onSelect: () => setCreating(true) },
     { label: 'Diagram', onSelect: openDiagram },
   ]);
   return (
@@ -107,11 +113,7 @@ function SchemaNode({
           aria-expanded={expanded}
           aria-current={chosen || undefined}
           data-level={nested ? 'schema' : 'database'}
-          title={onChoose && !chosen ? `Use this ${nested ? 'schema' : 'database'}` : undefined}
-          onClick={() => {
-            setExpanded(onChoose && !chosen ? true : !expanded);
-            onChoose?.();
-          }}
+          onClick={() => setExpanded(!expanded)}
           className={`flex min-w-0 flex-1 items-center gap-1 py-1 text-sm ${indent}`}
         >
           <Chevron size={13} aria-hidden className="shrink-0 text-muted" />
@@ -153,7 +155,7 @@ function DatabaseRow({
   current,
   open,
   onToggle,
-  onChoose,
+  onRefresh,
   menuItems,
   children,
 }: {
@@ -161,11 +163,15 @@ function DatabaseRow({
   current: boolean;
   open: boolean;
   onToggle: () => void;
-  onChoose: () => void;
+  /** Fetches the schemas and tables of the database in use again. */
+  onRefresh: () => void;
   menuItems: MenuItem[];
   children: ReactNode;
 }) {
-  const { triggers, menu } = useContextMenu(`${database} actions`, () => menuItems);
+  // Only the database in use can be browsed, so only it can be refreshed.
+  const { triggers, menu } = useContextMenu(`${database} actions`, () =>
+    current ? [...menuItems, { label: 'Refresh', onSelect: onRefresh, separated: true }] : menuItems,
+  );
   return (
     <div>
       <div className={`flex items-center pr-2 ${current ? 'here' : 'hover:bg-raised'}`} onContextMenu={triggers.onContextMenu}>
@@ -175,9 +181,11 @@ function DatabaseRow({
           data-level="database"
           aria-haspopup="menu"
           aria-expanded={current ? open : undefined}
-          title={current ? (open ? 'Collapse' : 'Expand') : 'Use this database'}
+          title={current ? (open ? 'Collapse' : 'Expand') : 'Right-click and pick Use as default to browse it'}
           onKeyDown={triggers.onKeyDown}
-          onClick={() => (current ? onToggle() : onChoose())}
+          onClick={() => {
+            if (current) onToggle();
+          }}
           className={`flex min-w-0 flex-1 items-center gap-1 py-1 pl-3 text-left text-sm ${current ? 'font-bold' : ''}`}
         >
           {current && open ? (
@@ -252,7 +260,11 @@ function ConnectionNode({
       setError(errorMessage(e));
     }
   };
-  const choose = (database: string) => attempt(() => namespace.chooseDatabase(database));
+  const choose = (database: string) =>
+    attempt(async () => {
+      await namespace.chooseDatabase(database);
+      setDatabaseOpen(true);
+    });
   const chooseSchema = (schema: string) => attempt(() => namespace.chooseSchema(schema));
   const newQuery = () =>
     openTab({ id: newId(), kind: 'sql', title: 'New query', profileId: profile.id, draftId: null, sql: '' });
@@ -327,7 +339,6 @@ function ConnectionNode({
         profile={profile}
         search={search}
         chosen={selectable && schema.name === (nested ? session.schema : current)}
-        onChoose={selectable ? () => void (nested ? chooseSchema(schema.name) : choose(schema.name)) : undefined}
         nested={nested}
         menuItems={selectable ? (nested ? schemaMenu(schema.name) : databaseMenu(schema.name)) : []}
       />
@@ -367,6 +378,25 @@ function ConnectionNode({
     await client.invalidateQueries({ queryKey: ['profiles'] });
   };
 
+  /** Fetches the databases, schemas and loaded tables of this connection again. */
+  const refresh = () => client.invalidateQueries({ queryKey: ['schema', profile.id] });
+
+  /** Fetches the schemas and their tables of the PostgreSQL database in use again. */
+  const refreshDatabase = () => {
+    if (!session) return;
+    void client.invalidateQueries({ queryKey: ['schema', profile.id, 'list', session.sessionId] });
+    void client.invalidateQueries({ queryKey: ['schema', profile.id, 'objects', session.sessionId] });
+  };
+
+  const { triggers: serverTriggers, menu: serverMenu } = useContextMenu(`${profile.name} actions`, () => [
+    { label: 'Refresh', disabled: !session, onSelect: () => void refresh() },
+    session
+      ? { label: 'Disconnect', separated: true, onSelect: () => void disconnect() }
+      : { label: 'Connect', separated: true, onSelect: () => void connect() },
+    ...(session ? [{ label: 'New query', onSelect: newQuery }] : []),
+    { label: 'Edit…', onSelect: onEdit },
+  ]);
+
   const trust = async () => {
     if (!hostKey) return;
     await api.trustHostKey(profile.id, hostKey.detail.keyType ?? 'unknown', hostKey.detail.fingerprint, hostKey.changed);
@@ -376,13 +406,19 @@ function ConnectionNode({
 
   return (
     <div>
-      <div data-connection={profile.id} className="group relative flex items-center gap-1 py-1 pl-0.5 pr-2 hover:bg-raised">
+      <div
+        data-connection={profile.id}
+        className="group relative flex items-center gap-1 py-1 pl-0.5 pr-2 hover:bg-raised"
+        onContextMenu={serverTriggers.onContextMenu}
+      >
         {grip}
         <button
           type="button"
           aria-expanded={open}
           aria-label={`${open ? 'Collapse' : 'Expand'} ${profile.name}`}
+          aria-haspopup="menu"
           title={open ? 'Collapse' : 'Expand'}
+          onKeyDown={serverTriggers.onKeyDown}
           onClick={onToggle}
           className="flex min-w-0 flex-1 items-center gap-1 text-left"
         >
@@ -420,6 +456,7 @@ function ConnectionNode({
           </button>
         </span>
       </div>
+      {serverMenu}
       {open && session && (
         <div className="mb-1 ml-5 flex flex-wrap gap-1">
           <Button
@@ -461,10 +498,7 @@ function ConnectionNode({
               current={database === current}
               open={databaseOpen}
               onToggle={() => setDatabaseOpen(!databaseOpen)}
-              onChoose={() => {
-                setDatabaseOpen(true);
-                void choose(database);
-              }}
+              onRefresh={refreshDatabase}
               menuItems={databaseMenu(database)}
             >
               {schemaNodes(true, true)}
