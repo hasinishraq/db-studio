@@ -43,8 +43,35 @@ env:
     **Full list of commits:** https://github.com/${{ github.repository }}/commits/${{ inputs.tag || github.ref_name }}
 
 jobs:
+  # Finds the release for the tag (drafts included) or creates a draft, so every
+  # build uploads to the same release. Looking a release up by tag alone misses drafts.
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.find.outputs.id }}
+    steps:
+      - id: find
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          find_id() {
+            gh api "repos/$REPO/releases" --paginate --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n1
+          }
+          id="$(find_id)"
+          if [ -z "$id" ]; then
+            pre=""
+            case "$TAG" in *-rc*) pre="--prerelease" ;; esac
+            gh release create "$TAG" --repo "$REPO" --verify-tag --draft $pre --title "DB Studio $TAG" --notes "$RELEASE_BODY"
+            id="$(find_id)"
+          fi
+          if [ -z "$id" ]; then echo "No release for $TAG" >&2; exit 1; fi
+          echo "Uploading to release $id"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
   windows:
     if: github.event_name == 'push'
+    needs: release
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,13 +86,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ env.TAG }}
-          releaseName: "DB Studio ${{ env.TAG }}"
-          releaseBody: ${{ env.RELEASE_BODY }}
-          releaseDraft: true
-          prerelease: ${{ contains(env.TAG, '-rc') }}
+          releaseId: ${{ needs.release.outputs.id }}
 
   macos-linux:
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -97,9 +121,5 @@ jobs:
           # There is no Apple Developer certificate, so the app is not notarized.
           APPLE_SIGNING_IDENTITY: "-"
         with:
-          tagName: ${{ env.TAG }}
-          releaseName: "DB Studio ${{ env.TAG }}"
-          releaseBody: ${{ env.RELEASE_BODY }}
-          releaseDraft: true
-          prerelease: ${{ contains(env.TAG, '-rc') }}
+          releaseId: ${{ needs.release.outputs.id }}
           args: --target ${{ matrix.target }}
