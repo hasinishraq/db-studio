@@ -1,5 +1,4 @@
-@import '@fontsource/atkinson-hyperlegible/400.css';
-@import '@fontsource/atkinson-hyperlegible/700.css';
+@import '@fontsource/atkinson-hyperlegible/400.css'; /* Kept for exported diagrams. */
 @import '@fontsource/jetbrains-mono/400.css';
 @tailwind base;
 @tailwind components;
@@ -8,24 +7,30 @@
 /* Two jobs for colour. The accent (blue) marks what you can act on and where you are.
    Safe, change and danger mean risk and nothing else. Everything else is told apart by depth
    (ground, panel, raised) and by a visible edge on anything clickable. */
+/* A neutral graphite workspace, in the tradition of desktop database tools.
+   The accent (blue) marks what you can act on and where you are.
+   Safe, change and danger mean risk and nothing else. Everything else is told apart by depth:
+   ground is the work surface (editor, grid), panel is the chrome around it, raised is anything
+   that floats or takes input. */
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --ground: #121b24;
-  --panel: #1b2633;
-  --raised: #273647;
-  --line: #2f4153;
-  --edge: #5d7891;
-  --pick: #33506b;
-  --ink: #eef2f5;
-  --muted: #a9b8c4;
-  --on-safe: #08201b;
-  --on-change: #211500;
-  --on-danger: #1c0604;
-  --safe: #3fa796;
-  --change: #d9962b;
-  --danger: #e2574a;
-  --series: #4f97d6;
+  --ground: #1c1d20;
+  --panel: #232428;
+  --raised: #2c2e33;
+  --line: #323439;
+  --edge: #4a4d55;
+  --pick: #2a3a57;
+  --hover: #2d2f34;
+  --ink: #e3e4e8;
+  --muted: #989ca6;
+  --on-safe: #06201a;
+  --on-change: #231600;
+  --on-danger: #200606;
+  --safe: #46b39a;
+  --change: #e0a03a;
+  --danger: #ec6257;
+  --series: #5b9cf0;
   /* Chart series, fixed order, validated for colour vision deficiency on this surface. */
   --chart-1: #3987e5;
   --chart-2: #d95926;
@@ -34,27 +39,28 @@
   --chart-5: #d55181;
   --chart-other: #6b7a89;
   --chart-surface: var(--ground);
-  --accent: #3b82c6;
+  --accent: #4c8df6;
   --on-accent: #ffffff;
-  --shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+  --shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 10px 28px rgb(0 0 0 / 0.5);
 }
 
 [data-theme='light'] {
   color-scheme: light;
-  --ground: #f6f8fa;
-  --panel: #e6ecf1;
+  --ground: #ffffff;
+  --panel: #f5f6f8;
   --raised: #ffffff;
-  --line: #d3dce3;
-  --edge: #74879a;
-  --pick: #cfe0ee;
-  --ink: #15212c;
-  --muted: #4f6070;
+  --line: #e1e4e8;
+  --edge: #c3c8cf;
+  --pick: #dce8fd;
+  --hover: #eaecef;
+  --ink: #1d2025;
+  --muted: #5d636d;
   --on-safe: #ffffff;
   --on-change: #ffffff;
   --on-danger: #ffffff;
-  --safe: #1f7a6b;
-  --change: #9c6510;
-  --danger: #b93226;
+  --safe: #1d7a66;
+  --change: #9a640e;
+  --danger: #c0392b;
   --series: #2f73b0;
   /* Chart series, fixed order, validated for colour vision deficiency on this surface. */
   --chart-1: #2a78d6;
@@ -64,9 +70,14 @@
   --chart-5: #e87ba4;
   --chart-other: #8a96a3;
   --chart-surface: var(--ground);
-  --accent: #1f66ad;
+  --accent: #2463eb;
   --on-accent: #ffffff;
-  --shadow: 0 12px 32px rgb(21 33 44 / 0.18);
+  --shadow: 0 0 0 1px rgb(15 20 30 / 0.08), 0 10px 28px rgb(15 20 30 / 0.16);
+}
+
+:root {
+  /* The platform's own UI face, so the app sits beside the rest of the desktop. */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, Ubuntu, sans-serif;
 }
 
 html,
@@ -79,8 +90,9 @@ body {
   margin: 0;
   background: var(--ground);
   color: var(--ink);
-  font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
-  font-size: 14px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
 
@@ -102,6 +114,17 @@ body {
   .stripe {
     background: color-mix(in srgb, var(--panel) 60%, transparent);
   }
+}
+
+/* Thin scrollbars that only show their thumb, as desktop tools do. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--edge) transparent;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent);
 }
 
 ::selection {

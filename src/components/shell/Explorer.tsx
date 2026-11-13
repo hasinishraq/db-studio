@@ -1,23 +1,7 @@
 import { usePrefs } from '../../api/settings';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ChevronDown,
-  ChevronRight,
-  ChevronsDownUp,
-  ChevronsUpDown,
-  Database,
-  Eye,
-  GripVertical,
-  Grid2x2Plus,
-  Network,
-  Pencil,
-  Plug,
-  Plus,
-  Table,
-  Trash2,
-  Unplug,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Database, Eye, Grid2x2Plus, GripVertical, Network, Pencil, Plug, Plus, Search, Table, Trash2, Unplug } from 'lucide-react';
 import { api, ApiError, errorMessage } from '../../api';
 import type { ConnectionProfile, DbObject, HostKeyDetail, SessionId } from '../../bindings';
 import { newId, useStudio } from '../../context/Studio';
@@ -48,7 +32,7 @@ function ObjectRow({ object, profile }: { object: DbObject; profile: ConnectionP
     <button
       type="button"
       onClick={open}
-      className="flex w-full items-center gap-1.5 rounded-r py-1 pl-3 pr-2 text-left text-sm hover:bg-raised"
+      className="flex h-6 w-full items-center gap-1.5 pl-3 pr-2 text-left text-sm hover:bg-hover"
     >
       <Icon size={13} className="shrink-0 text-muted" aria-hidden />
       <span className="truncate">{object.name}</span>
@@ -105,7 +89,7 @@ function SchemaNode({
   ]);
   return (
     <div>
-      <div className={`group flex items-center gap-1 pr-1 ${chosen ? 'here' : 'hover:bg-raised'}`} onContextMenu={triggers.onContextMenu}>
+      <div className={`group flex h-6 items-center gap-1 pr-1 ${chosen ? 'here' : 'hover:bg-hover'}`} onContextMenu={triggers.onContextMenu}>
         <button
           type="button"
           onKeyDown={triggers.onKeyDown}
@@ -114,13 +98,13 @@ function SchemaNode({
           aria-current={chosen || undefined}
           data-level={nested ? 'schema' : 'database'}
           onClick={() => setExpanded(!expanded)}
-          className={`flex min-w-0 flex-1 items-center gap-1 py-1 text-sm ${indent}`}
+          className={`flex h-full min-w-0 flex-1 items-center gap-1 text-sm ${indent}`}
         >
           <Chevron size={13} aria-hidden className="shrink-0 text-muted" />
-          <span className={`truncate ${chosen ? 'font-bold' : ''}`}>{schema}</span>
+          <span className={`truncate ${chosen ? 'font-semibold' : ''}`}>{schema}</span>
         </button>
         {chosen && <span className="shrink-0 text-xs text-muted">in use</span>}
-        <Button tone="quiet" className="p-1" title={`New table in ${schema}`} onClick={() => setCreating(true)}>
+        <Button tone="quiet" className="h-5 w-5 p-0 opacity-0 focus:opacity-100 group-hover:opacity-100" title={`New table in ${schema}`} onClick={() => setCreating(true)}>
           <Grid2x2Plus size={14} aria-hidden />
           <span className="sr-only">New table</span>
         </Button>
@@ -174,7 +158,7 @@ function DatabaseRow({
   );
   return (
     <div>
-      <div className={`flex items-center pr-2 ${current ? 'here' : 'hover:bg-raised'}`} onContextMenu={triggers.onContextMenu}>
+      <div className={`flex h-6 items-center pr-2 ${current ? 'here' : 'hover:bg-hover'}`} onContextMenu={triggers.onContextMenu}>
         <button
           type="button"
           aria-current={current || undefined}
@@ -186,7 +170,7 @@ function DatabaseRow({
           onClick={() => {
             if (current) onToggle();
           }}
-          className={`flex min-w-0 flex-1 items-center gap-1 py-1 pl-3 text-left text-sm ${current ? 'font-bold' : ''}`}
+          className={`flex h-full min-w-0 flex-1 items-center gap-1 pl-3 text-left text-sm ${current ? 'font-semibold' : ''}`}
         >
           {current && open ? (
             <ChevronDown size={13} aria-hidden className="shrink-0 text-muted" />
@@ -408,7 +392,7 @@ function ConnectionNode({
     <div>
       <div
         data-connection={profile.id}
-        className="group relative flex items-center gap-1 py-1 pl-0.5 pr-2 hover:bg-raised"
+        className="group relative flex h-7 items-center gap-1 pl-0.5 pr-2 hover:bg-hover"
         onContextMenu={serverTriggers.onContextMenu}
       >
         {grip}
@@ -432,13 +416,13 @@ function ConnectionNode({
             aria-hidden
             className={`shrink-0 ${session ? 'text-safe' : state === 'failed' ? 'text-danger' : 'text-muted'}`}
           />
-          <span className="min-w-0 truncate font-bold">{profile.name}</span>
+          <span className="min-w-0 truncate font-semibold">{profile.name}</span>
           {!open && current && <span className="min-w-0 truncate text-xs text-muted">{current}</span>}
         </button>
         {session && <span className="text-xs text-safe">Connected</span>}
         {state === 'connecting' && <span className="text-xs text-muted">Connecting</span>}
         {/* Over the end of the row, so hidden actions do not cut the name short. */}
-        <span className="absolute right-1 flex gap-0.5 rounded bg-raised opacity-0 focus-within:opacity-100 group-hover:opacity-100 [&>button]:rounded [&>button]:p-1 [&>button:hover]:bg-pick">
+        <span className="absolute right-1 flex gap-0.5 rounded bg-panel opacity-0 focus-within:opacity-100 group-hover:opacity-100 [&>button]:rounded [&>button]:p-1 [&>button]:text-muted [&>button:hover]:bg-hover [&>button:hover]:text-ink">
           {session ? (
             <button type="button" aria-label={`Disconnect ${profile.name}`} onClick={() => void disconnect()}>
               <Unplug size={14} />
@@ -590,28 +574,37 @@ export function Explorer() {
     </button>
   );
 
-  const marker = <div aria-hidden className="mx-2 h-0.5 rounded bg-ink" />;
+  const marker = <div aria-hidden className="mx-2 h-0.5 rounded bg-accent" />;
   return (
     <div className="flex h-full flex-col">
-      <div className="flex gap-1 p-2">
-        <Input aria-label="Search tables" placeholder="Search tables" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <Button aria-label="New connection" title="New connection" onClick={() => setEditing(blankProfile())}>
-          <Plus size={14} />
+      <div className="flex items-center gap-0.5 px-2 pb-2">
+        <div className="relative min-w-0 flex-1">
+          <Search size={13} aria-hidden className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
+          <Input
+            aria-label="Search tables"
+            placeholder="Search tables"
+            className="pl-7"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        {profiles.length > 1 && (
+          <>
+            <Button tone="quiet" className="w-[26px] px-0" aria-label="Collapse all" title="Collapse every connection" onClick={() => setAll(true)}>
+              <ChevronsDownUp size={14} aria-hidden />
+            </Button>
+            <Button tone="quiet" className="w-[26px] px-0" aria-label="Expand all" title="Expand every connection" onClick={() => setAll(false)}>
+              <ChevronsUpDown size={14} aria-hidden />
+            </Button>
+          </>
+        )}
+        <Button tone="quiet" className="w-[26px] px-0" aria-label="New connection" title="New connection" onClick={() => setEditing(blankProfile())}>
+          <Plus size={15} />
         </Button>
       </div>
-      {profiles.length > 1 && (
-        <div className="flex items-center justify-end gap-1 whitespace-nowrap px-2 pb-1">
-          <Button tone="quiet" className="shrink-0 px-1.5 py-0.5 text-xs" title="Collapse every connection" onClick={() => setAll(true)}>
-            <ChevronsDownUp size={13} aria-hidden /> Collapse all
-          </Button>
-          <Button tone="quiet" className="shrink-0 px-1.5 py-0.5 text-xs" title="Expand every connection" onClick={() => setAll(false)}>
-            <ChevronsUpDown size={13} aria-hidden /> Expand all
-          </Button>
-        </div>
-      )}
-      <div ref={list} className={`min-h-0 flex-1 overflow-auto ${dragging ? 'cursor-grabbing select-none' : ''}`}>
+      <div ref={list} className={`min-h-0 flex-1 select-none overflow-auto pb-2 ${dragging ? 'cursor-grabbing' : ''}`}>
         {profiles.length === 0 && (
-          <div className="p-3 text-sm text-muted">
+          <div className="px-3 py-2 text-sm text-muted">
             <p className="mb-2">Add a connection to browse a database.</p>
             <Button tone="primary" onClick={() => setEditing(blankProfile())}>
               Add a connection
@@ -621,7 +614,7 @@ export function Explorer() {
         {ordered.map((profile, index) => (
           <div key={profile.id} className={dragging?.id === profile.id ? 'opacity-50' : ''}>
             {dragging && dragging.to === index && marker}
-            <div className="border-b border-line/60">
+            <div>
               <ConnectionNode
                 profile={profile}
                 search={search}

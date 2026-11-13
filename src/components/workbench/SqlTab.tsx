@@ -2,7 +2,7 @@ import { EXPORT_LABELS, usePrefs } from '../../api/settings';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Play, Square, X } from 'lucide-react';
+import { Download, Gauge, Play, Square, X } from 'lucide-react';
 import { api, ApiError, errorMessage } from '../../api';
 import { runFlow } from '../../api/run';
 import type { ColumnInfo, ExportFormat, TxState } from '../../bindings';
@@ -10,6 +10,7 @@ import { newId, useStudio, type Tab } from '../../context/Studio';
 import { ResultStore } from '../../lib/resultStore';
 import { charOffset, rowCount, spanText } from '../../lib/sqlText';
 import { Button, ErrorNote, Select } from '../ui';
+import { notify } from '../ui/toast';
 import { PlanView } from './PlanView';
 import { ResultsGrid, type GridPick } from './ResultsGrid';
 import { useRunLog, WithLog } from './RunLog';
@@ -210,9 +211,11 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
       const picked = gridPick.current?.();
       if (picked) {
         const rows = await api.exportRows(session, picked.columns, picked.rows, format, null);
+        notify.success(`Exported ${rowCount(rows)} (${picked.kind})`);
         log.add('info', `Exported ${rowCount(rows)} (${picked.kind})`);
       } else {
         const rows = await api.exportQuery(session, editor.current?.selection() || sql, format, newId(), () => {});
+        notify.success(`Exported ${rowCount(rows)}`);
         log.add('info', `Exported ${rowCount(rows)}`);
       }
     } catch (e) {
@@ -239,7 +242,7 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-2 py-1">
+      <div className="flex min-h-[38px] select-none flex-wrap items-center gap-1.5 border-b border-line bg-panel px-2 py-1.5">
         <Select
           aria-label="Connection"
           className="w-44"
@@ -255,15 +258,15 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
         </Select>
         {tab.profileId && sessions[tab.profileId]?.database && (
           <span
-            className="flex items-center gap-1 rounded border border-line px-2 py-0.5 text-sm"
+            className="flex h-[26px] items-center gap-1 rounded border border-line bg-ground px-2 text-xs"
             title="Queries run in this database"
           >
             <span className="text-muted">in</span>
-            <span className="font-bold">{sessions[tab.profileId]?.database}</span>
+            <span className="font-semibold">{sessions[tab.profileId]?.database}</span>
             {sessions[tab.profileId]?.schema && (
               <>
                 <span className="ml-1 border-l border-line pl-2 text-muted">schema</span>
-                <span className="font-bold">{sessions[tab.profileId]?.schema}</span>
+                <span className="font-semibold">{sessions[tab.profileId]?.schema}</span>
               </>
             )}
           </span>
@@ -277,11 +280,17 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
             <Play size={13} aria-hidden /> Run
           </Button>
         )}
-        <Button disabled={!session} onClick={() => void explain()}>
-          Explain
+        <span aria-hidden className="mx-0.5 h-4 w-px bg-line" />
+        <Button tone="quiet" disabled={!session} onClick={() => void explain()}>
+          <Gauge size={14} aria-hidden /> Explain
         </Button>
-        <Button disabled={!session} title="Change the format in Settings" onClick={() => void exportResults(prefs.exportFormat)}>
-          Export as {EXPORT_LABELS[prefs.exportFormat]}
+        <Button
+          tone="quiet"
+          disabled={!session}
+          title="Change the format in Settings"
+          onClick={() => void exportResults(prefs.exportFormat)}
+        >
+          <Download size={14} aria-hidden /> Export as {EXPORT_LABELS[prefs.exportFormat]}
         </Button>
         <Select
           aria-label="Export results"
@@ -302,26 +311,31 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
         <Panel defaultSize="45%" minSize="15%">
           <SqlEditor value={sql} onChange={setSql} onRun={() => void run()} columns={columns} handle={editor} />
         </Panel>
-        {resultsOpen && <Separator aria-label="Resize editor" className="h-1.5 bg-line hover:bg-edge" />}
+        {resultsOpen && (
+          <Separator
+            aria-label="Resize editor"
+            className="h-px bg-line transition-colors hover:bg-accent data-[separator=active]:bg-accent"
+          />
+        )}
         {resultsOpen && (
         <Panel minSize="15%">
           <div className="flex h-full flex-col">
-            <div className="flex items-center gap-1 border-b border-line bg-panel pl-2">
+            <div className="flex h-8 shrink-0 select-none items-center gap-0.5 border-b border-line bg-panel pl-1 pr-1">
               {withRows.length > 1 &&
                 withRows.map(([index], position) => (
                   <button
                     key={index}
                     type="button"
                     onClick={() => setActive(position)}
-                    className={`px-3 py-1 text-sm ${position === active ? 'here-top bg-ground font-bold' : 'text-muted hover:text-ink'}`}
+                    className={`h-full px-3 text-xs ${position === active ? 'here-top font-semibold text-ink' : 'text-muted hover:text-ink'}`}
                   >
                     Result {position + 1}
                   </button>
                 ))}
-              {withRows.length <= 1 && <span className="py-1 text-xs font-bold text-muted">Results</span>}
+              {withRows.length <= 1 && <span className="px-2 text-xs font-semibold text-muted">Results</span>}
               <Button
                 tone="quiet"
-                className="ml-auto px-2 py-0.5 text-xs"
+                className="ml-auto h-6 px-1.5 text-xs"
                 aria-label="Close results"
                 title="Close results and log. They open again on the next run."
                 disabled={Boolean(runId)}
@@ -348,7 +362,7 @@ export function SqlTab({ tab }: { tab: SqlTabData }) {
               ) : showing && current ? (
                 <ResultsGrid store={showing} statement={current} onStop={runId ? stop : undefined} pickRef={gridPick} />
               ) : (
-                <p className="p-3 text-sm text-muted">
+                <p className="flex h-full items-center justify-center p-3 text-sm text-muted">
                   {target ? 'Results appear here. Press Ctrl+Enter to run.' : 'Connect to a database to run this query.'}
                 </p>
               )}

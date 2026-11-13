@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Lock, Undo2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Lock, Undo2, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { ColumnMeta, LockReason, Value } from '../../bindings';
 import { cellText } from '../../lib/resultStore';
@@ -215,17 +215,31 @@ export function EditableGrid({
   return (
     <>
       <table className="border-collapse font-mono text-xs" role="grid" aria-label="Table data">
-        <thead className="sticky top-0 z-10 bg-panel shadow-[inset_0_-2px_0_var(--edge)]">
+        <thead className="sticky top-0 z-10 select-none bg-panel shadow-[inset_0_-1px_0_var(--edge)]">
           <tr>
-            <th className="border-b border-line" aria-label="Select" />
+            <th className="h-8 w-9 border-b border-r border-line" aria-label="Select" />
             {columns.map((column) => {
               const lock = editable?.locked.get(column.name);
               return (
-                <th key={column.name} className="border-b border-r border-line px-2 text-left">
-                  <button type="button" className="inline-flex items-center gap-1 font-bold" title={column.typeName} onClick={() => onSort(column.name)}>
+                <th key={column.name} className="h-8 border-b border-r border-line p-0 text-left font-sans">
+                  <button
+                    type="button"
+                    className="group flex h-8 w-full items-center gap-1.5 whitespace-nowrap px-2.5 text-xs font-semibold hover:bg-hover"
+                    title={column.typeName}
+                    onClick={() => onSort(column.name)}
+                  >
                     {lock && <Lock size={11} aria-label={LOCK_TEXT[lock]} className="text-muted" />}
-                    {column.name}
-                    {sort?.column === column.name ? (sort.descending ? ' ▼' : ' ▲') : ''}
+                    <span>{column.name}</span>
+                    <span className="font-mono text-2xs font-normal text-muted">{column.typeName}</span>
+                    {sort?.column === column.name ? (
+                      sort.descending ? (
+                        <ArrowDown size={12} aria-label="sorted descending" className="ml-auto text-accent" />
+                      ) : (
+                        <ArrowUp size={12} aria-label="sorted ascending" className="ml-auto text-accent" />
+                      )
+                    ) : (
+                      <ArrowUpDown size={12} aria-hidden className="ml-auto text-muted opacity-0 group-hover:opacity-100" />
+                    )}
                   </button>
                 </th>
               );
@@ -246,17 +260,17 @@ export function EditableGrid({
                 className={clsx(
                   gone && 'text-muted line-through',
                   isNew && 'bg-change/10',
-                  !isNew && !gone && (selected.has(index) ? 'here' : `hover:bg-raised ${index % 2 ? 'stripe' : ''}`),
+                  !isNew && !gone && (selected.has(index) ? 'here' : `hover:bg-hover ${index % 2 ? 'stripe' : ''}`),
                 )}
                 onDoubleClick={() => !editable && row && onRowOpen(row)}
               >
-                <td className="whitespace-nowrap border-b border-line/40 px-1">
+                <td className="whitespace-nowrap border-b border-r border-line/40 px-2 text-center">
                   {isNew ? (
                     <button
                       type="button"
                       aria-label="Remove new row"
                       title="Remove new row"
-                      className="rounded p-0.5 text-muted hover:bg-pick hover:text-ink"
+                      className="rounded p-0.5 text-muted hover:bg-hover hover:text-ink"
                       onClick={() => onPending(removeNewRow(pending, line.id))}
                     >
                       <X size={12} aria-hidden />
@@ -269,13 +283,13 @@ export function EditableGrid({
                       onChange={(e) => toggleSelected(index, e.target.checked)}
                     />
                   )}
-                  {isNew && <span className="ml-1 text-[10px] font-bold text-change">New</span>}
+                  {isNew && <span className="ml-1 font-sans text-2xs font-semibold text-change">New</span>}
                   {gone && (
                     <button
                       type="button"
                       aria-label={`Keep row ${offset + index + 1}`}
                       title="Keep this row"
-                      className="ml-1 rounded p-0.5 hover:bg-pick"
+                      className="ml-1 rounded p-0.5 hover:bg-hover"
                       onClick={() => onPending(revertRow(pending, index))}
                     >
                       <Undo2 size={12} aria-hidden />
@@ -306,7 +320,7 @@ export function EditableGrid({
                       }
                       style={{ height: rowHeight }}
                       className={clsx(
-                        'max-w-xs truncate border-b border-r border-line/40 px-2 outline-none',
+                        'max-w-xs truncate border-b border-r border-line/40 px-2.5 outline-none',
                         isActive && 'ring-2 ring-inset ring-accent',
                         changed && !gone && 'bg-change/15',
                         (shown === null || isDefault) && 'italic text-muted',
@@ -348,7 +362,7 @@ export function EditableGrid({
         <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
           <div
             role="menu"
-            className="fixed z-50 min-w-[9rem] rounded-md border border-line bg-panel p-1 text-sm shadow-pop"
+            className="fixed z-50 min-w-[9rem] animate-pop-in rounded-md border border-line bg-raised p-1 text-sm shadow-pop"
             style={{ left: menu.x, top: menu.y }}
             onKeyDown={(e) => e.key === 'Escape' && setMenu(null)}
           >
@@ -357,7 +371,7 @@ export function EditableGrid({
                 type="button"
                 role="menuitem"
                 autoFocus
-                className="block w-full rounded px-2 py-1 text-left hover:bg-pick"
+                className="flex h-7 w-full items-center rounded px-2 text-left hover:bg-accent hover:text-on-accent"
                 onClick={() => onPending(revertCell(pending, menu.row, menu.column))}
               >
                 Revert cell
@@ -366,7 +380,7 @@ export function EditableGrid({
             <button
               type="button"
               role="menuitem"
-              className="block w-full rounded px-2 py-1 text-left hover:bg-pick"
+              className="flex h-7 w-full items-center rounded px-2 text-left hover:bg-accent hover:text-on-accent"
               onClick={() => onPending(revertRow(pending, menu.row))}
             >
               Revert row

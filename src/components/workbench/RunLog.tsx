@@ -42,17 +42,17 @@ export function RunLog({ entries, onClear }: { entries: LogEntry[]; onClear: () 
   if (entries.length === 0) return null;
   return (
     <section aria-label="Run log" className="flex h-full min-h-0 flex-col bg-panel">
-      <div className="flex shrink-0 items-center justify-between px-2 py-0.5">
-        <h2 className="text-xs font-bold text-muted">Log</h2>
-        <Button className="px-1.5 py-0 text-xs" onClick={onClear}>
+      <div className="flex h-7 shrink-0 select-none items-center justify-between border-b border-line pl-3 pr-1">
+        <h2 className="text-xs font-semibold text-muted">Log</h2>
+        <Button tone="quiet" className="h-5 px-1.5 text-xs" onClick={onClear}>
           Clear log
         </Button>
       </div>
-      <ol ref={list} className="min-h-0 flex-1 overflow-auto px-2 pb-1">
+      <ol ref={list} className="min-h-0 flex-1 overflow-auto px-3 py-1">
         {entries.map((entry) => (
-          <li key={entry.id} className="mb-0.5 flex items-center gap-2 text-xs">
+          <li key={entry.id} className="flex h-5 items-center gap-2 text-xs">
             <span aria-hidden className={clsx('size-1.5 shrink-0 rounded-full', MARK[entry.tone])} />
-            <time className="shrink-0 text-muted">{new Date(entry.at).toLocaleTimeString()}</time>
+            <time className="shrink-0 tabular-nums text-muted">{new Date(entry.at).toLocaleTimeString()}</time>
             <span className="shrink-0">{entry.text}</span>
             {entry.sql && (
               <code className="min-w-0 truncate font-mono text-muted" title={entry.sql}>
@@ -75,7 +75,10 @@ export function WithLog({ log, children }: { log: ReturnType<typeof useRunLog>; 
       </Panel>
       {log.entries.length > 0 && (
         <>
-          <Separator aria-label="Resize log" className="h-1.5 bg-line hover:bg-edge" />
+          <Separator
+            aria-label="Resize log"
+            className="h-px bg-line transition-colors hover:bg-accent data-[separator=active]:bg-accent"
+          />
           <Panel defaultSize="25%" minSize="8%">
             <RunLog entries={log.entries} onClear={log.clear} />
           </Panel>

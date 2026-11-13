@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Shell } from './components/shell/Shell';
+import { Toaster } from './components/ui/toast';
 import { StudioProvider } from './context/Studio';
 import { applyCachedTheme } from './lib/theme';
 import './index.css';
@@ -18,6 +19,7 @@ if (root) {
       <QueryClientProvider client={client}>
         <StudioProvider>
           <Shell />
+          <Toaster />
         </StudioProvider>
       </QueryClientProvider>
     </StrictMode>,

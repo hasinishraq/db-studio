@@ -43,7 +43,7 @@ export function ContextMenu({ at, items, label, onClose }: { at: { x: number; y:
         ref={box}
         role="menu"
         aria-label={label}
-        className="fixed min-w-[14rem] rounded-md border border-line bg-panel p-1 text-sm shadow-pop"
+        className="fixed min-w-[13rem] origin-top-left animate-pop-in select-none rounded-md border border-line bg-raised p-1 text-sm shadow-pop"
         style={{ left, top }}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={move}
@@ -55,8 +55,8 @@ export function ContextMenu({ at, items, label, onClose }: { at: { x: number; y:
             role="menuitem"
             disabled={item.disabled}
             className={clsx(
-              'block w-full rounded px-2 py-1 text-left hover:bg-pick focus:bg-pick focus:outline-none disabled:opacity-40 disabled:hover:bg-transparent',
-              item.separated && 'mt-1 border-t border-line pt-1.5',
+              'flex h-7 w-full items-center rounded px-2 text-left hover:bg-accent hover:text-on-accent focus:bg-accent focus:text-on-accent focus:outline-none disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink',
+              item.separated && 'relative mt-[9px] before:absolute before:-top-[5px] before:left-1 before:right-1 before:h-px before:bg-line',
             )}
             onClick={() => {
               onClose();

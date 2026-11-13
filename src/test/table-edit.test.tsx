@@ -180,3 +180,55 @@ it('a table without a primary key keeps the form and says why', async () => {
   expect(screen.queryByLabelText('Cell value')).toBeNull();
   expect(await screen.findByRole('dialog', { name: 'Edit row' })).toBeInTheDocument();
 });
+
+it('shows applied filters as chips that can be removed one by one', async () => {
+  setup();
+  await screen.findByText('Ann');
+  fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+  const dialog = await screen.findByRole('dialog', { name: 'Filter rows' });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Add a filter' }));
+  fireEvent.change(within(dialog).getByLabelText('Value'), { target: { value: '7' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Apply filters' }));
+
+  const chips = await screen.findByLabelText('Filters');
+  expect(chips).toHaveTextContent('id');
+  expect(chips).toHaveTextContent('equals');
+  await waitFor(() =>
+    expect(mocks.tablePage).toHaveBeenLastCalledWith(
+      's1',
+      { schema: 'public', name: 't' },
+      expect.objectContaining({ filters: [{ column: 'id', operator: 'Eq', value: '7' }] }),
+    ),
+  );
+
+  fireEvent.click(within(chips).getByRole('button', { name: 'Remove filter on id' }));
+  await waitFor(() => expect(screen.queryByLabelText('Filters')).toBeNull());
+  await waitFor(() =>
+    expect(mocks.tablePage).toHaveBeenLastCalledWith('s1', { schema: 'public', name: 't' }, expect.objectContaining({ filters: [] })),
+  );
+});
+
+it('lays out the structure as tables, marking the key column', async () => {
+  // Queued before setup, whose default for the structure is empty.
+  mocks.tableStructure.mockReturnValueOnce(
+    ok({
+      metadata: { owner: 'app', sizeBytes: 2_500_000, rowEstimate: 1200 },
+      columns: [
+        { name: 'id', dataType: 'integer', nullable: false, defaultValue: null, primaryKey: true },
+        { name: 'name', dataType: 'text', nullable: true, defaultValue: null, primaryKey: false },
+      ],
+      indexes: [{ name: 't_pkey', columns: ['id'], unique: true }],
+      foreignKeys: [],
+      constraints: [],
+      ddl: 'CREATE TABLE t (id integer primary key)',
+    }),
+  );
+  setup();
+  await screen.findByText('Ann');
+  fireEvent.click(screen.getByRole('button', { name: 'Structure' }));
+  const columnsBlock = await screen.findByRole('region', { name: 'Columns' });
+  expect(within(columnsBlock).getByLabelText('primary key')).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Indexes' })).toHaveTextContent('t_pkey');
+  expect(screen.getByText('2.4 MB')).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Definition' })).toHaveTextContent('CREATE TABLE t');
+});

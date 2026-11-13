@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Environment } from '../../bindings';
 import type { QueryPart } from '../../lib/chat';
 import { Guards, RiskIcon, useGuards } from '../modals/ConfirmDialog';
-import { Button } from '../ui';
+import { Button, cn } from '../ui';
 
 /** A statement waiting for a person. It runs only if Approve is clicked. */
 export function ReviewCard({
@@ -25,30 +25,39 @@ export function ReviewCard({
     onDecide(approved);
   };
   return (
-    <div className="my-2 rounded-lg border border-line bg-panel p-3">
-      <p className="flex items-center gap-2 font-bold">
-        <RiskIcon highRisk={highRisk} />
-        {highRisk ? 'This cannot be undone' : 'The assistant wants to run this'}
-      </p>
-      <p className="text-sm text-muted">
-        On {connectionName} ({environment}). {query.reason}
-      </p>
-      <pre className="my-2 max-h-48 overflow-auto rounded bg-ground p-2 font-mono text-sm">{query.sql}</pre>
-      {highRisk && (
-        <ul className="mb-2 list-disc pl-5 text-sm">
-          {query.riskReasons.map((reason) => (
-            <li key={reason}>{reason}</li>
-          ))}
-        </ul>
+    <div
+      className={cn(
+        'my-3 overflow-hidden rounded-md border',
+        highRisk ? 'border-danger/45 bg-danger/5' : 'border-change/45 bg-change/5',
       )}
-      <Guards guards={guards} highRisk={highRisk} production={production} connectionName={connectionName} />
-      <div className="mt-2 flex gap-2">
-        <Button tone={highRisk ? 'danger' : 'change'} disabled={!guards.ready || decided} onClick={() => decide(true)}>
-          Approve
-        </Button>
-        <Button disabled={decided} onClick={() => decide(false)}>
-          Decline
-        </Button>
+    >
+      <div className="flex items-start gap-2.5 border-b border-line/70 px-3 py-2.5">
+        <RiskIcon highRisk={highRisk} />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{highRisk ? 'This cannot be undone' : 'The assistant wants to run this'}</p>
+          <p className="text-xs text-muted">
+            On {connectionName} ({environment}). {query.reason}
+          </p>
+        </div>
+      </div>
+      <pre className="max-h-48 overflow-auto bg-ground px-3 py-2 font-mono text-xs leading-relaxed">{query.sql}</pre>
+      <div className="space-y-2 border-t border-line/70 px-3 py-2.5">
+        {highRisk && (
+          <ul className="list-disc space-y-0.5 pl-5 text-sm">
+            {query.riskReasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        )}
+        <Guards guards={guards} highRisk={highRisk} production={production} connectionName={connectionName} />
+        <div className="flex gap-2 pt-1">
+          <Button tone={highRisk ? 'danger' : 'change'} disabled={!guards.ready || decided} onClick={() => decide(true)}>
+            Approve
+          </Button>
+          <Button disabled={decided} onClick={() => decide(false)}>
+            Decline
+          </Button>
+        </div>
       </div>
     </div>
   );

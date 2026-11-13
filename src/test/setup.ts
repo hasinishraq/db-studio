@@ -6,3 +6,6 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 };
+
+// jsdom does not scroll, and cmdk scrolls the picked command into view.
+Element.prototype.scrollIntoView ??= function scrollIntoView() {};

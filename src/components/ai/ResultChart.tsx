@@ -390,7 +390,7 @@ export function ResultChart({ chart, drawingRef }: { chart: BuiltChart; drawingR
   return (
     <figure ref={figure} className="relative my-2 max-w-2xl">
       <svg viewBox={`0 0 ${W} ${chartHeight(chart, top)}`} className="w-full" role="img" aria-label={chart.title}>
-        <g ref={drawingRef} fontFamily="Atkinson Hyperlegible, sans-serif">
+        <g ref={drawingRef} fontFamily="-apple-system, Segoe UI, system-ui, sans-serif">
           <text x={LEFT} y={18} fontSize={14} fontWeight={700} fill="var(--ink)">
             {short(chart.title, 70)}
           </text>

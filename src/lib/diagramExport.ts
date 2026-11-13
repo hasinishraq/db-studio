@@ -8,6 +8,8 @@ export const EXPORT_COLORS: Record<string, string> = {
   ink: '#15212c',
   muted: '#4f6070',
   panel: '#e6ecf1',
+  edge: '#74879a',
+  accent: '#1f66ad',
   series: '#2f73b0',
   'chart-1': '#2a78d6',
   'chart-2': '#eb6834',

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Maximize, Minus, Plus, Upload } from 'lucide-react';
+import { Download, FileText, Image, Maximize, Minus, Network, Plus, Upload } from 'lucide-react';
 import type { MutableRefObject, RefObject } from 'react';
 import { api, ApiError, errorMessage } from '../../api';
 import { runFlow } from '../../api/run';
@@ -26,6 +26,7 @@ import { diagramBounds, standaloneSvg } from '../../lib/diagramExport';
 import { ResultStore } from '../../lib/resultStore';
 import { spanText } from '../../lib/sqlText';
 import { Button, ErrorNote, Select } from '../ui';
+import { notify } from '../ui/toast';
 import { useRunLog, WithLog } from './RunLog';
 
 type ErTab = Extract<Tab, { kind: 'er' }>;
@@ -52,42 +53,83 @@ async function readTables(session: string, schema: string): Promise<TableStructu
   return tables;
 }
 
+const RADIUS = 6;
+
+/** The two ends of an edge path, read from its first move and last point. */
+export function edgeEnds(path: string): { start: Point; end: Point } | null {
+  const numbers = path.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+  if (numbers.length < 4) return null;
+  const [sx, sy] = numbers as [number, number];
+  const ex = numbers[numbers.length - 2] as number;
+  const ey = numbers[numbers.length - 1] as number;
+  return { start: { x: sx, y: sy }, end: { x: ex, y: ey } };
+}
+
 function TableBox({
   table,
   at,
   onGrab,
+  lit,
+  dim,
+  onHover,
 }: {
   table: DiagramTable;
   at: Point;
   onGrab: (name: string, event: React.PointerEvent) => void;
+  /** Hovered, or joined to the hovered table. */
+  lit: boolean;
+  /** Another table is hovered and this one is not joined to it. */
+  dim: boolean;
+  onHover: (name: string | null) => void;
 }) {
   const foreign = new Set(table.keys.flatMap((key) => key.columns));
+  const height = tableHeight(table);
   return (
     <g
       transform={`translate(${at.x},${at.y})`}
       className="cursor-move"
       data-table={table.name}
+      opacity={dim ? 0.45 : 1}
       onPointerDown={(event) => onGrab(table.name, event)}
+      onPointerEnter={() => onHover(table.name)}
+      onPointerLeave={() => onHover(null)}
     >
       <title>{table.name}</title>
-      <rect width={BOX_WIDTH} height={tableHeight(table)} rx={4} fill="var(--raised)" stroke="var(--line)" />
-      <text x={10} y={19} fill="var(--ink)" fontWeight={700} fontSize={14}>
+      <rect
+        width={BOX_WIDTH}
+        height={height}
+        rx={RADIUS}
+        fill="var(--raised)"
+        stroke={lit ? 'var(--accent)' : 'var(--line)'}
+        strokeWidth={lit ? 1.5 : 1}
+      />
+      <path
+        d={`M0.5,${RADIUS} a${RADIUS - 0.5},${RADIUS - 0.5} 0 0 1 ${RADIUS - 0.5},${-(RADIUS - 0.5)} h${BOX_WIDTH - RADIUS * 2} a${RADIUS - 0.5},${RADIUS - 0.5} 0 0 1 ${RADIUS - 0.5},${RADIUS - 0.5} v${HEADER - RADIUS} h${-(BOX_WIDTH - 1)} z`}
+        fill="var(--panel)"
+      />
+      <text x={12} y={18.5} fill="var(--ink)" fontWeight={600} fontSize={13}>
         {short(table.name, NAME_LENGTH + 6)}
       </text>
-      <line x1={0} x2={BOX_WIDTH} y1={HEADER} y2={HEADER} stroke="var(--line)" />
+      <text x={BOX_WIDTH - 12} y={18.5} fill="var(--muted)" textAnchor="end" fontSize={11}>
+        {table.columns.length}
+      </text>
+      <line x1={0} x2={BOX_WIDTH} y1={HEADER} y2={HEADER} stroke={lit ? 'var(--accent)' : 'var(--line)'} />
       {table.columns.map((column, index) => {
-        const y = HEADER + index * ROW + 14;
-        const mark = column.primaryKey ? 'PK' : foreign.has(column.name) ? 'FK' : '';
+        const top = HEADER + index * ROW;
+        const y = top + 14;
+        const key = column.primaryKey;
+        const mark = key ? 'PK' : foreign.has(column.name) ? 'FK' : '';
         return (
           <g key={column.name} fontSize={12} fontFamily="JetBrains Mono, monospace">
             <title>{`${column.name} ${column.type}`}</title>
-            <text x={10} y={y} fill="var(--muted)" fontSize={10} fontWeight={700}>
+            {index > 0 && <line x1={10} x2={BOX_WIDTH - 10} y1={top} y2={top} stroke="var(--line)" strokeOpacity={0.5} />}
+            <text x={12} y={y} fill={key ? 'var(--accent)' : 'var(--muted)'} fontSize={9.5} fontWeight={700}>
               {mark}
             </text>
-            <text x={32} y={y} fill="var(--ink)" fontWeight={column.primaryKey ? 700 : 400}>
+            <text x={36} y={y} fill="var(--ink)" fontWeight={key ? 600 : 400}>
               {short(column.name, NAME_LENGTH - 6)}
             </text>
-            <text x={BOX_WIDTH - 10} y={y} fill="var(--muted)" textAnchor="end" fontSize={11}>
+            <text x={BOX_WIDTH - 12} y={y} fill="var(--muted)" textAnchor="end" fontSize={11}>
               {short(column.type, TYPE_LENGTH)}
             </text>
           </g>
@@ -124,7 +166,28 @@ function Canvas({
   const [positions, setPositions] = useState<Positions>({});
   positionsRef.current = positions;
   const [view, setView] = useState<View>({ x: 24, y: 24, k: 1 });
+  const [hovered, setHovered] = useState<string | null>(null);
   const drag = useRef<Drag | null>(null);
+  const grid = `er-grid-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+
+  // Which tables each edge joins, so hovering one table lights its relationships.
+  const joins = useMemo(() => {
+    const map = new Map<string, [string, string]>();
+    for (const table of tables) {
+      table.keys.forEach((key, index) => map.set(`${table.name}:${index}`, [table.name, key.table]));
+    }
+    return map;
+  }, [tables]);
+  const neighbours = useMemo(() => {
+    if (!hovered) return null;
+    const near = new Set([hovered]);
+    for (const [from, to] of joins.values()) {
+      if (from === hovered) near.add(to);
+      if (to === hovered) near.add(from);
+    }
+    return near;
+  }, [hovered, joins]);
+
 
   const fitAll = useCallback(
     (at: Positions) => {
@@ -201,17 +264,57 @@ function Canvas({
   return (
     <div
       ref={frame}
-      className="min-h-0 flex-1 cursor-grab touch-none select-none overflow-hidden"
+      className="min-h-0 flex-1 cursor-grab touch-none select-none overflow-hidden bg-ground active:cursor-grabbing"
       onPointerDown={(event) => startDrag({ kind: 'pan', from: { x: event.clientX, y: event.clientY }, view })}
     >
       <svg width="100%" height="100%" role="img" aria-label={label}>
+        {/* The dot grid moves and scales with the drawing, but is not part of a saved image. */}
+        <defs>
+          <pattern
+            id={grid}
+            width={20}
+            height={20}
+            patternUnits="userSpaceOnUse"
+            patternTransform={`translate(${view.x},${view.y}) scale(${view.k})`}
+          >
+            <circle cx={1} cy={1} r={1} fill="var(--edge)" fillOpacity={0.45} />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill={`url(#${grid})`} />
         <g ref={drawingRef} transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
-          {edges(tables, positions).map((edge) => (
-            <path key={edge.id} d={edge.path} fill="none" stroke="var(--muted)" strokeWidth={1.5} />
-          ))}
+          {edges(tables, positions).map((edge) => {
+            const [from, to] = joins.get(edge.id) ?? ['', ''];
+            const lit = Boolean(hovered) && (from === hovered || to === hovered);
+            const dim = Boolean(hovered) && !lit;
+            const ends = edgeEnds(edge.path);
+            const stroke = lit ? 'var(--accent)' : 'var(--muted)';
+            return (
+              <g key={edge.id} opacity={dim ? 0.25 : 1}>
+                <path d={edge.path} fill="none" stroke={stroke} strokeWidth={lit ? 2 : 1.25} />
+                {ends && (
+                  <>
+                    <circle cx={ends.start.x} cy={ends.start.y} r={3} fill="var(--raised)" stroke={stroke} strokeWidth={1.25} />
+                    <circle cx={ends.end.x} cy={ends.end.y} r={3} fill={stroke} />
+                  </>
+                )}
+              </g>
+            );
+          })}
           {tables.map((table) => {
             const at = positions[table.name];
-            return at ? <TableBox key={table.name} table={table} at={at} onGrab={grab} /> : null;
+            return at ? (
+              <TableBox
+                key={table.name}
+                table={table}
+                at={at}
+                onGrab={grab}
+                lit={Boolean(neighbours?.has(table.name))}
+                dim={Boolean(neighbours) && !neighbours?.has(table.name)}
+                onHover={(name) => {
+                  if (!drag.current) setHovered(name);
+                }}
+              />
+            ) : null;
           })}
         </g>
       </svg>
@@ -252,6 +355,7 @@ export function ErDiagram({ tab }: { tab: ErTab }) {
     setError(null);
     try {
       const objects = await api.exportSchema(session, tab.schema);
+      notify.success(`Exported the structure of ${tab.schema}: ${objects} tables and views`);
       log.add('info', `Exported the structure of ${tab.schema}: ${objects} tables and views`);
     } catch (e) {
       if (!(e instanceof ApiError && e.code === 'Cancelled')) setError(errorMessage(e));
@@ -334,58 +438,84 @@ export function ErDiagram({ tab }: { tab: ErTab }) {
   const failure = error ?? (live.error ? errorMessage(live.error) : null);
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-2 py-1">
-        <Button disabled={!session || Boolean(file)} onClick={() => void exportSchema()}>
-          <Download size={13} aria-hidden /> Export schema
+      <div className="flex min-h-[38px] shrink-0 select-none flex-wrap items-center gap-1 border-b border-line bg-panel px-2 py-1.5">
+        <span className="flex items-center gap-1.5 px-1 text-xs text-muted">
+          <Network size={14} aria-hidden className="text-accent" />
+          <span className="font-semibold text-ink">{file ? file.source.name : tab.schema}</span>
+          <span className="tabular-nums">{tables.length === 1 ? '1 table' : `${tables.length} tables`}</span>
+        </span>
+        <span aria-hidden className="mx-1 h-4 w-px bg-line" />
+        <Button tone="quiet" disabled={!session || Boolean(file)} onClick={() => void exportSchema()}>
+          <Download size={14} aria-hidden /> Export schema
         </Button>
-        <Button disabled={!session} onClick={() => void importSchema()}>
-          <Upload size={13} aria-hidden /> Import schema
+        <Button tone="quiet" disabled={!session} onClick={() => void importSchema()}>
+          <Upload size={14} aria-hidden /> Import schema
         </Button>
-        <Select
-          aria-label="Export image"
-          className="w-36"
-          value=""
-          disabled={tables.length === 0 || saving}
-          onChange={(e) => e.target.value && void exportImage(e.target.value as DiagramFormat)}
-        >
-          <option value="">Export image</option>
-          <option value="Png">PNG image</option>
-          <option value="Jpeg">JPEG image</option>
-          <option value="Pdf">PDF document</option>
-        </Select>
+        <span className="relative">
+          <Image size={13} aria-hidden className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
+          <Select
+            aria-label="Export image"
+            className="w-36 pl-7"
+            value=""
+            disabled={tables.length === 0 || saving}
+            onChange={(e) => e.target.value && void exportImage(e.target.value as DiagramFormat)}
+          >
+            <option value="">Export image</option>
+            <option value="Png">PNG image</option>
+            <option value="Jpeg">JPEG image</option>
+            <option value="Pdf">PDF document</option>
+          </Select>
+        </span>
         <span className="ml-auto flex items-center gap-1">
-          <Button tone="quiet" aria-label="Zoom out" onClick={() => zoomBy(0.8)}>
-            <Minus size={13} aria-hidden />
-          </Button>
-          <output className="w-12 text-center text-sm">{Math.round(zoom * 100)}%</output>
-          <Button tone="quiet" aria-label="Zoom in" onClick={() => zoomBy(1.25)}>
-            <Plus size={13} aria-hidden />
-          </Button>
-          <Button tone="quiet" onClick={() => setFitRequest((n) => n + 1)}>
+          <span className="inline-flex items-center rounded border border-edge/70 bg-ground">
+            <Button tone="quiet" className="h-6 w-6 rounded-r-none px-0" aria-label="Zoom out" onClick={() => zoomBy(0.8)}>
+              <Minus size={13} aria-hidden />
+            </Button>
+            <output className="w-12 border-x border-line text-center text-xs tabular-nums">{Math.round(zoom * 100)}%</output>
+            <Button tone="quiet" className="h-6 w-6 rounded-l-none px-0" aria-label="Zoom in" onClick={() => zoomBy(1.25)}>
+              <Plus size={13} aria-hidden />
+            </Button>
+          </span>
+          <Button tone="quiet" onClick={() => setFitRequest((n) => n + 1)} title="Fit every table on screen">
             <Maximize size={13} aria-hidden /> Fit
           </Button>
         </span>
       </div>
       {file && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-line px-2 py-1 text-sm">
-          <span>
+        <div
+          role="status"
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-sm"
+        >
+          <FileText size={14} aria-hidden className="shrink-0 text-accent" />
+          <span className="min-w-0 flex-1">
             Preview of {file.source.name}: {file.outline.tables.length} tables. Nothing has been applied.
             {file.outline.unread > 0 && ` ${file.outline.unread} statements could not be read and are not drawn.`}
           </span>
+          <Button tone="quiet" disabled={applying} onClick={() => setFile(null)}>
+            Close preview
+          </Button>
           <Button tone="change" disabled={applying} onClick={() => void apply()}>
             Apply to {destination}
-          </Button>
-          <Button disabled={applying} onClick={() => setFile(null)}>
-            Close preview
           </Button>
         </div>
       )}
       <ErrorNote message={failure} />
       <WithLog log={log}>
         {tables.length === 0 && !failure && !live.isLoading && (
-          <p className="p-3 text-sm text-muted">
-            {file ? 'This file creates no tables.' : 'This schema has no tables. Import a schema file to add some.'}
-          </p>
+          <div className="flex flex-col items-center gap-3 px-3 pb-6 pt-16 text-center text-sm text-muted">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-panel text-accent">
+              <Network size={18} aria-hidden />
+            </span>
+            <p>{file ? 'This file creates no tables.' : 'This schema has no tables. Import a schema file to add some.'}</p>
+            {!file && (
+              <Button disabled={!session} onClick={() => void importSchema()}>
+                <Upload size={14} aria-hidden /> Import schema
+              </Button>
+            )}
+          </div>
+        )}
+        {live.isLoading && !file && (
+          <p className="pt-16 text-center text-sm text-muted">Reading the tables in {tab.schema}</p>
         )}
         <Canvas
           tables={tables}

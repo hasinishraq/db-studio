@@ -14,6 +14,7 @@ export default {
         line: mix('line'),
         edge: mix('edge'),
         pick: mix('pick'),
+        hover: mix('hover'),
         ink: mix('ink'),
         muted: mix('muted'),
         accent: mix('accent'),
@@ -26,11 +27,18 @@ export default {
         'on-danger': mix('on-danger'),
       },
       fontFamily: {
-        sans: ['"Atkinson Hyperlegible"', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-ui)'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       boxShadow: { pop: 'var(--shadow)' },
-      fontSize: { xs: ['12px', '16px'], sm: ['13px', '18px'], base: ['14px', '20px'], lg: ['16px', '22px'], xl: ['20px', '26px'] },
+      // Desktop density: 13px is the working size, as in most native database tools.
+      fontSize: { '2xs': ['11px', '14px'], xs: ['12px', '16px'], sm: ['13px', '18px'], base: ['13px', '20px'], lg: ['15px', '22px'], xl: ['18px', '24px'] },
+      borderRadius: { DEFAULT: '4px', md: '6px', lg: '8px' },
+      keyframes: {
+        'pop-in': { from: { opacity: '0', transform: 'scale(0.97)' }, to: { opacity: '1', transform: 'scale(1)' } },
+        'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+      },
+      animation: { 'pop-in': 'pop-in 120ms ease-out', 'fade-in': 'fade-in 120ms ease-out' },
     },
   },
   plugins: [],

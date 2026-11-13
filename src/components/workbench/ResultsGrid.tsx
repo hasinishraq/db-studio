@@ -4,6 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ColumnMeta, Value } from '../../bindings';
 import { cellText, type ResultStore, type StatementResult } from '../../lib/resultStore';
 import { Button, Input } from '../ui';
+import { Count } from '../ui/Count';
 
 const DEFAULT_WIDTH = 160;
 
@@ -172,29 +173,39 @@ export function ResultsGrid({
   const fetching = statement.status === 'running';
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b border-line px-2 py-1 text-sm">
-        <span className="text-muted">
-          {fetching ? `Fetching ${count.toLocaleString()} rows` : `${count.toLocaleString()} rows`}
+      <div className="flex h-9 shrink-0 select-none items-center gap-2 border-b border-line px-2 text-xs">
+        <span className="flex items-center gap-1.5 text-muted" aria-live="polite">
+          {fetching && <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />}
+          {fetching ? 'Fetching ' : ''}
+          <Count value={count} className="font-medium text-ink" />
+          {count === 1 ? ' row' : ' rows'}
         </span>
         {selected.size > 0 && (
           <>
-            <span className="font-bold">{selected.size.toLocaleString()} selected</span>
-            <Button onClick={() => setSelected(new Set())}>Clear selection</Button>
+            <span aria-hidden className="h-3.5 w-px bg-line" />
+            <span>
+              <Count value={selected.size} className="font-medium" /> selected
+            </span>
+            <Button tone="quiet" className="h-6 px-1.5 text-xs" onClick={() => setSelected(new Set())}>
+              Clear selection
+            </Button>
           </>
         )}
         {fetching && onStop && (
-          <Button tone="danger" onClick={onStop}>
+          <Button tone="danger" className="h-6 px-2 text-xs" onClick={onStop}>
             Stop
           </Button>
         )}
         <Input
-          className="ml-auto max-w-48"
+          className="ml-auto h-6 max-w-52 text-xs"
           aria-label="Filter loaded rows"
           placeholder="Filter loaded rows"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <Button onClick={copy}>Copy</Button>
+        <Button tone="quiet" className="h-6 px-2 text-xs" onClick={copy}>
+          Copy
+        </Button>
       </div>
       <div
         ref={parent}
@@ -205,12 +216,12 @@ export function ResultsGrid({
         aria-label="Query results"
         onKeyDown={onGridKey}
       >
-        <div style={{ width: fullWidth }} className="sticky top-0 z-10 flex border-b-2 border-edge bg-panel">
+        <div style={{ width: fullWidth }} className="sticky top-0 z-10 flex select-none border-b border-edge/60 bg-panel">
           {statement.columns.map((column, index) => (
             <div key={`${column.name}${index}`} style={{ width: width(index) }} className="relative shrink-0 border-r border-line">
               <button
                 type="button"
-                className="w-full truncate px-2 text-left text-xs font-bold leading-7 hover:bg-raised"
+                className="w-full truncate px-2 text-left text-xs font-semibold leading-7 hover:bg-hover"
                 title={column.typeName}
                 onClick={() =>
                   setSort((s) =>
@@ -224,7 +235,7 @@ export function ResultsGrid({
               <span
                 aria-hidden
                 onPointerDown={(e) => startResize(index, e)}
-                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-edge"
+                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-accent"
               />
             </div>
           ))}
@@ -237,7 +248,7 @@ export function ResultsGrid({
               aria-selected={selected.has(sourceIndex(item.index))}
               style={{ position: 'absolute', top: 0, transform: `translateY(${item.start}px)`, height: ROW_HEIGHT }}
               className={`flex cursor-default select-none border-b border-line/50 ${
-                selected.has(sourceIndex(item.index)) ? 'here' : `hover:bg-raised ${item.index % 2 ? 'stripe' : ''}`
+                selected.has(sourceIndex(item.index)) ? 'here' : `hover:bg-hover ${item.index % 2 ? 'stripe' : ''}`
               }`}
               onClick={(event) => clickRow(item.index, event)}
             >
