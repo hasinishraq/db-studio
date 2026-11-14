@@ -22,7 +22,7 @@ Get the latest installer from the [Releases page](https://github.com/hasinishraq
 The macOS app is not notarized by Apple. The first time, right-click DB Studio in Applications and
 choose **Open**, then **Open** again (or allow it in System Settings → Privacy & Security).
 
-![The explorer with connections to several databases](screenshots/01-explorer-connections.png)
+![The explorer with connections to several databases](screenshots/v0.2.0/028-tree-postgres-shop.png)
 
 ## Technology
 
@@ -60,34 +60,61 @@ src                     The React app
 
 ## Screenshots
 
+Taken from version 0.2.0 against real PostgreSQL, MySQL and SQLite databases. The assistant runs on a
+free OpenRouter model.
+
+### Connecting, with clear results
+Test a connection before saving it. The result shows the server version and whether traffic is
+encrypted and verified. Failures show the server's own reason. TLS verification is on by default.
+
+![A successful connection test](screenshots/v0.2.0/014-test-success-postgres.png)
+
+![A TLS failure when the server does not offer TLS](screenshots/v0.2.0/011-test-fail-tls-required.png)
+
 ### Query editor and results
 Completion-aware SQL editor with a virtualised result grid. Production connections are marked in red.
 
-![Query results with 10,000 rows](screenshots/08-results-10k-rows.png)
+![Query results with 10,000 rows](screenshots/v0.2.0/044-results-10k-rows.png)
 
 ### Every change is reviewed first
-Any statement that changes data shows the exact SQL and the target database before it runs.
+Any statement that changes data shows the exact SQL and the target database before it runs. High-risk
+statements stay locked until you confirm, and a read-only connection refuses changes even after approval.
 
-![Review dialog for an UPDATE statement](screenshots/14-review-change.png)
+![Review dialog for an UPDATE statement](screenshots/v0.2.0/055-review-update.png)
+
+![A DROP TABLE locked until confirmed](screenshots/v0.2.0/059-review-drop-confirmed.png)
+
+### Edit tables in place
+Changed cells are tinted, new rows marked and deletes struck through. One review saves them all in a
+single transaction.
+
+![Inline edits waiting to be saved](screenshots/v0.2.0/074-inline-edit-pending.png)
 
 ### AI assistant with charts
 Ask questions in plain language. Safe reads run on their own, inside a read-only transaction, and the
-results can be shown as a pie, bar or line chart.
+results can be shown as a pie, bar, line or area chart.
 
-![The assistant answering with a pie chart](screenshots/35-assistant-pie.png)
+![The assistant answering with a pie chart](screenshots/v0.2.0/128-assistant-pie.png)
 
 ### The assistant cannot write without you
 When the assistant proposes a change it waits for approval. On production you type the connection
 name to confirm.
 
-![The assistant asking for approval to run an UPDATE](screenshots/39-assistant-write-review.png)
+![The assistant asking for approval to run an UPDATE](screenshots/v0.2.0/132-assistant-write-review.png)
 
 ### Schema diagrams
 Tables and foreign keys drawn automatically, exportable as an image or schema file.
 
-![Schema diagram of the sales schema](screenshots/31-diagram.png)
+![Schema diagram of the sales schema](screenshots/v0.2.0/091-diagram-hover-highlight.png)
 
-More screenshots are in [`screenshots/`](screenshots/).
+### Light theme
+
+![Query results in the light theme](screenshots/v0.2.0/154-light-results-10k.png)
+
+![The assistant in the light theme](screenshots/v0.2.0/165-light-assistant-pie.png)
+
+All 171 screenshots for 0.2.0, from connecting through to the assistant, are in
+[`screenshots/v0.2.0/`](screenshots/v0.2.0/). Older ones are in [`screenshots/`](screenshots/).
 
 ## Run it
 
