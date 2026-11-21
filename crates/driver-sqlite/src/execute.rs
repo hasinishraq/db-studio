@@ -94,15 +94,13 @@ fn run(conn: &Connection, sql: &str, opts: ExecOptions, sink: &RowSink) -> Resul
     }
     let declared: Vec<Option<String>> = statement
         .columns()
-        .iter()
         .map(|c| c.decl_type().map(str::to_owned))
         .collect();
     summary.columns = statement
         .column_names()
-        .iter()
         .zip(&declared)
         .map(|(name, ty)| ColumnMeta {
-            name: (*name).to_owned(),
+            name: name.to_owned(),
             type_name: ty.clone().unwrap_or_default(),
             nullable: None,
         })

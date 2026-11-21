@@ -187,15 +187,13 @@ pub(crate) fn table_page(
     let mut statement = conn.prepare(&sql).map_err(map_error)?;
     let declared: Vec<Option<String>> = statement
         .columns()
-        .iter()
         .map(|c| c.decl_type().map(str::to_owned))
         .collect();
     let columns: Vec<ColumnMeta> = statement
         .column_names()
-        .iter()
         .zip(&declared)
         .map(|(name, ty)| ColumnMeta {
-            name: (*name).to_owned(),
+            name: name.to_owned(),
             type_name: ty.clone().unwrap_or_default(),
             nullable: None,
         })

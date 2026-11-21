@@ -43,7 +43,7 @@ tokio-postgres        = "0.7"
 deadpool-postgres     = "0.14"
 tokio-postgres-rustls = "0.14"
 mysql_async           = { version = "0.37", default-features = false, features = ["default-rustls-ring"] }
-rusqlite              = { version = "0.39", features = ["bundled", "column_decltype"] }
+rusqlite              = { version = "0.41", features = ["bundled", "column_decltype"] }
 sqlx                  = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 rustls                = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 rustls-native-certs   = "0.8"

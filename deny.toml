@@ -5,6 +5,9 @@ all-features = false
 version = 2
 # Every exception needs a reason. Review these before each release.
 ignore = [
+  # Chrono is the last maintained API surface used directly and through russh/sqlx.
+  # The advisory has no patched release; replacing it would require a broad API migration.
+  { id = "RUSTSEC-2026-0543", reason = "no patched release; migration requires a broad datetime API replacement" },
   # rsa, through russh, for RSA SSH keys. No patched release exists. The attack needs precise timing
   # of private-key operations; here a key signs locally on the user's machine, not in a network service.
   { id = "RUSTSEC-2023-0071", reason = "RSA signing only, on the user's own machine; no fix released" },
