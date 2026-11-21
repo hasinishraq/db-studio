@@ -23,7 +23,14 @@ jobs:
           bash docker/tls/gen.sh
           mkdir -p docker/ssh
           ssh-keygen -t ed25519 -N "" -f docker/ssh/test_key
-          docker compose -f docker/compose.yml up -d --wait
+          docker compose -f docker/compose.yml up -d --wait --wait-timeout 180
+      - name: Check Postgres TLS is on
+        run: docker compose -f docker/compose.yml exec -T postgres-tls psql -U studio -tAc "SHOW ssl" | grep -qx on
+      - name: Test service logs
+        if: failure()
+        run: |
+          docker compose -f docker/compose.yml ps -a
+          docker compose -f docker/compose.yml logs --no-color --tail 200
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace

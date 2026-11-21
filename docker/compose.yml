@@ -10,12 +10,16 @@ services:
     environment: { POSTGRES_USER: studio, POSTGRES_PASSWORD: studio, POSTGRES_DB: studio }
     ports: ["54330:5432"]
     volumes: ["./tls:/tls:ro"]      # created by docker/tls/gen.sh (CA + server cert for localhost)
-    command: >
-      bash -c "cp /tls/server.key /var/lib/postgresql/server.key &&
-               chown postgres /var/lib/postgresql/server.key &&
-               chmod 600 /var/lib/postgresql/server.key &&
-               exec docker-entrypoint.sh postgres -c ssl=on
-               -c ssl_cert_file=/tls/server.crt -c ssl_key_file=/var/lib/postgresql/server.key"
+    # List form on purpose: a folded (">") block keeps the line breaks of more-indented lines,
+    # which split the postgres flags into separate shell commands and crashed the container.
+    # The key is copied so it is owned by postgres with mode 600 whatever the host's file owner is.
+    command:
+      - bash
+      - -euc
+      - |
+        install -o postgres -g postgres -m 600 /tls/server.key /var/lib/postgresql/server.key
+        install -o postgres -g postgres -m 644 /tls/server.crt /var/lib/postgresql/server.crt
+        exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U studio"], interval: 3s, retries: 20 }
 
   mysql:
